@@ -125,6 +125,10 @@ alias big="expac -H M '%m\t%n' | sort -h | nl"     # Sort installed packages acc
 alias gitpkg='pacman -Q | grep -i "\-git" | wc -l' # List amount of -git packages
 
 bind \cz fg
+bind \ck "i3lock -i ~/.config/i3/Wallpapers/i3lock.png"
+
+alias gcp='gcc -std=c99 -pedantic -Werror -Wall -Wextra -Wvla'
+alias gcd='gcc -std=c99 -pedantic -Werror -Wall -Wextra -Wvla -g -O0 -fsanitize=address'
 
 # Custom alias
 abbr setclip "xclip -selection c"
@@ -148,4 +152,5 @@ alias jctl="journalctl -p 3 -xb"
 alias rip="expac --timefmt='%Y-%m-%d %T' '%l\t%n %v' | sort | tail -200 | nl"
 
 #neofetch --ascii ~/.config/fish/ascii_neofetch
-neofetch
+#neofetch
+fastfetch

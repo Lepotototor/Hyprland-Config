@@ -22,13 +22,16 @@ CHANGE_BG()
 #unzip ~/.config/i3/CascadiaCode.zip -d ~/.local/share/fonts
 # fc-cache -f -v
 
-picom &
-polybar &
+# picom &
+# polybar &
 
 # rm -rf ~/.config/hypr
 # rm -rf ~/.config/kitty
 # cp -r ~/.config/hyprv ~/.config/hypr
 # cp -r ~/.config/kittyv ~/.config/kitty
 
-feh --bg-fill "$HOME/.config/i3/Wallpapers/fairy.png"
+feh --bg-fill "$HOME/.config/i3/Wallpapers/hello-kitty-antifa.jpg"
 xset r rate 250
+
+# keep terminal open
+fish
