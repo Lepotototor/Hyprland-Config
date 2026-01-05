@@ -4,6 +4,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import Quickshell.Hyprland
 
 /**
@@ -20,6 +21,30 @@ Singleton {
     property var activeWorkspace: null
     property var monitors: []
     property var layers: ({})
+
+    // Convenient stuff
+
+    function toplevelsForWorkspace(workspace) {
+        return ToplevelManager.toplevels.values.filter(toplevel => {
+            const address = `0x${toplevel.HyprlandToplevel?.address}`;
+            var win = HyprlandData.windowByAddress[address];
+            return win?.workspace?.id === workspace;
+        })
+    }
+
+    function hyprlandClientsForWorkspace(workspace) {
+        return root.windowList.filter(win => win.workspace.id === workspace);
+    }
+
+    function clientForToplevel(toplevel) {
+        if (!toplevel || !toplevel.HyprlandToplevel) {
+            return null;
+        }
+        const address = `0x${toplevel?.HyprlandToplevel?.address}`;
+        return root.windowByAddress[address];
+    }
+
+    // Internals
 
     function updateWindowList() {
         getClients.running = true;
@@ -63,13 +88,14 @@ Singleton {
 
         function onRawEvent(event) {
             // console.log("Hyprland raw event:", event.name);
+            if (["openlayer", "closelayer", "screencast"].includes(event.name)) return;
             updateAll()
         }
     }
 
     Process {
         id: getClients
-        command: ["bash", "-c", "hyprctl clients -j"]
+        command: ["hyprctl", "clients", "-j"]
         stdout: StdioCollector {
             id: clientsCollector
             onStreamFinished: {
@@ -87,7 +113,7 @@ Singleton {
 
     Process {
         id: getMonitors
-        command: ["bash", "-c", "hyprctl monitors -j"]
+        command: ["hyprctl", "monitors", "-j"]
         stdout: StdioCollector {
             id: monitorsCollector
             onStreamFinished: {
@@ -98,7 +124,7 @@ Singleton {
 
     Process {
         id: getLayers
-        command: ["bash", "-c", "hyprctl layers -j"]
+        command: ["hyprctl", "layers", "-j"]
         stdout: StdioCollector {
             id: layersCollector
             onStreamFinished: {
@@ -109,7 +135,7 @@ Singleton {
 
     Process {
         id: getWorkspaces
-        command: ["bash", "-c", "hyprctl workspaces -j"]
+        command: ["hyprctl", "workspaces", "-j"]
         stdout: StdioCollector {
             id: workspacesCollector
             onStreamFinished: {
@@ -127,7 +153,7 @@ Singleton {
 
     Process {
         id: getActiveWorkspace
-        command: ["bash", "-c", "hyprctl activeworkspace -j"]
+        command: ["hyprctl", "activeworkspace", "-j"]
         stdout: StdioCollector {
             id: activeWorkspaceCollector
             onStreamFinished: {

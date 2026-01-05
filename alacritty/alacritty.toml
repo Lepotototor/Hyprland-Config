@@ -5,7 +5,7 @@ WINIT_X11_SCALE_FACTOR = "1"
 [window]
 dynamic_padding = true
 decorations = "full"
-title = "Alacritty@CachyOS"
+title = "Alacritty@Apagnan"
 opacity = 0.8
 decorations_theme_variant = "Dark"
 
@@ -14,8 +14,8 @@ columns = 100
 lines = 30
 
 [window.class]
-instance = "Alacritty"
-general = "Alacritty"
+instance = "Zizi"
+general = "Zizi"
 
 [scrolling]
 history = 10000

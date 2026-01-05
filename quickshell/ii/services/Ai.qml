@@ -3,12 +3,11 @@ pragma ComponentBehavior: Bound
 
 import qs.modules.common.functions as CF
 import qs.modules.common
-import qs
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
-import "./ai/"
+import qs.services.ai
 
 /**
  * Basic service to handle LLM chats. Supports Google's and OpenAI's API formats.
@@ -26,6 +25,8 @@ Singleton {
     property Component mistralApiStrategy: MistralApiStrategy {}
     readonly property string interfaceRole: "interface"
     readonly property string apiKeyEnvVarName: "API_KEY"
+
+    signal responseFinished()
 
     property string systemPrompt: {
         let prompt = Config.options?.ai?.systemPrompt ?? "";
@@ -132,44 +133,50 @@ Singleton {
         "openai": {
             "functions": [
                 {
-                    "name": "switch_to_search_mode",
-                    "description": "Search the web",
+                    "type": "function",
+                    "function": {
+                        "name": "get_shell_config",
+                        "description": "Get the desktop shell config file contents",
+                        "parameters": {}
+                    },
                 },
                 {
-                    "name": "get_shell_config",
-                    "description": "Get the desktop shell config file contents",
-                },
-                {
-                    "name": "set_shell_config",
-                    "description": "Set a field in the desktop graphical shell config file. Must only be used after `get_shell_config`.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "key": {
-                                "type": "string",
-                                "description": "The key to set, e.g. `bar.borderless`. MUST NOT BE GUESSED, use `get_shell_config` to see what keys are available before setting.",
+                    "type": "function",
+                    "function": {
+                        "name": "set_shell_config",
+                        "description": "Set a field in the desktop graphical shell config file. Must only be used after `get_shell_config`.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "key": {
+                                    "type": "string",
+                                    "description": "The key to set, e.g. `bar.borderless`. MUST NOT BE GUESSED, use `get_shell_config` to see what keys are available before setting.",
+                                },
+                                "value": {
+                                    "type": "string",
+                                    "description": "The value to set, e.g. `true`"
+                                }
                             },
-                            "value": {
-                                "type": "string",
-                                "description": "The value to set, e.g. `true`"
-                            }
-                        },
-                        "required": ["key", "value"]
+                            "required": ["key", "value"]
+                        }
                     }
                 },
                 {
-                    "name": "run_shell_command",
-                    "description": "Run a shell command in bash and get its output. Use this only for quick commands that don't require user interaction. For commands that require interaction, ask the user to run manually instead.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "command": {
-                                "type": "string",
-                                "description": "The bash command to run",
+                    "type": "function",
+                    "function": {
+                        "name": "run_shell_command",
+                        "description": "Run a shell command in bash and get its output. Use this only for quick commands that don't require user interaction. For commands that require interaction, ask the user to run manually instead.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string",
+                                    "description": "The bash command to run",
+                                },
                             },
-                        },
-                        "required": ["command"]
-                    }
+                            "required": ["command"]
+                        }
+                    },
                 },
             ],
             "search": [],
@@ -247,20 +254,7 @@ Singleton {
     // - key_get_description: Description of pricing and how to get an API key
     // - api_format: The API format of the model. Can be "openai" or "gemini". Default is "openai".
     // - extraParams: Extra parameters to be passed to the model. This is a JSON object.
-    property var models: {
-        "gemini-2.0-flash": aiModelComponent.createObject(this, {
-            "name": "Gemini 2.0 Flash",
-            "icon": "google-gemini-symbolic",
-            "description": Translation.tr("Online | Google's model\nFast, can perform searches for up-to-date information"),
-            "homepage": "https://aistudio.google.com",
-            "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent",
-            "model": "gemini-2.0-flash",
-            "requires_key": true,
-            "key_id": "gemini",
-            "key_get_link": "https://aistudio.google.com/app/apikey",
-            "key_get_description": Translation.tr("**Pricing**: free. Data used for training.\n\n**Instructions**: Log into Google account, allow AI Studio to create Google Cloud project or whatever it asks, go back and click Get API key"),
-            "api_format": "gemini",
-        }),
+    property var models: Config.options.policies.ai === 2 ? {} : {
         "gemini-2.5-flash": aiModelComponent.createObject(this, {
             "name": "Gemini 2.5 Flash",
             "icon": "google-gemini-symbolic",
@@ -274,26 +268,13 @@ Singleton {
             "key_get_description": Translation.tr("**Pricing**: free. Data used for training.\n\n**Instructions**: Log into Google account, allow AI Studio to create Google Cloud project or whatever it asks, go back and click Get API key"),
             "api_format": "gemini",
         }),
-        "gemini-2.5-flash-pro": aiModelComponent.createObject(this, {
-            "name": "Gemini 2.5 Pro",
+        "gemini-3-flash": aiModelComponent.createObject(this, {
+            "name": "Gemini 3 Flash",
             "icon": "google-gemini-symbolic",
-            "description": Translation.tr("Online | Google's model\nGoogle's state-of-the-art multipurpose model that excels at coding and complex reasoning tasks."),
+            "description": Translation.tr("Online | Google's model\nPro-level intelligence at the speed and pricing of Flash."),
             "homepage": "https://aistudio.google.com",
-            "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:streamGenerateContent",
-            "model": "gemini-2.5-pro",
-            "requires_key": true,
-            "key_id": "gemini",
-            "key_get_link": "https://aistudio.google.com/app/apikey",
-            "key_get_description": Translation.tr("**Pricing**: free. Data used for training.\n\n**Instructions**: Log into Google account, allow AI Studio to create Google Cloud project or whatever it asks, go back and click Get API key"),
-            "api_format": "gemini",
-        }),
-        "gemini-2.5-flash-lite": aiModelComponent.createObject(this, {
-            "name": "Gemini 2.5 Flash-Lite",
-            "icon": "google-gemini-symbolic",
-            "description": Translation.tr("Online | Google's model\nA Gemini 2.5 Flash model optimized for cost-efficiency and high throughput."),
-            "homepage": "https://aistudio.google.com",
-            "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent",
-            "model": "gemini-2.5-flash-lite",
+            "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:streamGenerateContent",
+            "model": "gemini-3-flash-preview",
             "requires_key": true,
             "key_id": "gemini",
             "key_get_link": "https://aistudio.google.com/app/apikey",
@@ -346,6 +327,9 @@ Singleton {
             });
         }
     }
+
+    property string requestScriptFilePath: "/tmp/quickshell/ai/request.sh"
+    property string pendingFilePath: ""
 
     Component.onCompleted: {
         setModel(currentModelId, false, false); // Do necessary setup for model
@@ -509,8 +493,6 @@ Singleton {
         modelId = modelId.toLowerCase()
         if (modelList.indexOf(modelId) !== -1) {
             const model = models[modelId]
-            // Fetch API keys if needed
-            if (model?.requires_key) KeyringStorage.fetchKeyringData();
             // See if policy prevents online models
             if (Config.options.policies.ai === 2 && !model.endpoint.includes("localhost")) {
                 root.addMessage(
@@ -596,9 +578,13 @@ Singleton {
         root.tokenCount.total = -1;
     }
 
+    FileView {
+        id: requesterScriptFile
+    }
+
     Process {
         id: requester
-        property list<string> baseCommand: ["bash", "-c"]
+        property list<string> baseCommand: ["bash"]
         property AiMessageData message
         property ApiStrategy currentStrategy
 
@@ -609,10 +595,15 @@ Singleton {
                 root.postResponseHook = null; // Reset hook after use
             }
             root.saveChat("lastSession")
+            root.responseFinished()
         }
 
         function makeRequest() {
             const model = models[currentModelId];
+
+            // Fetch API keys if needed
+            if (model?.requires_key && !KeyringStorage.loaded) KeyringStorage.fetchKeyringData();
+            
             requester.currentStrategy = root.currentApiStrategy;
             requester.currentStrategy.reset(); // Reset strategy state
 
@@ -623,7 +614,7 @@ Singleton {
             const endpoint = root.currentApiStrategy.buildEndpoint(model);
             const messageArray = root.messageIDs.map(id => root.messageByID[id]);
             const filteredMessageArray = messageArray.filter(message => message.role !== Ai.interfaceRole);
-            const data = root.currentApiStrategy.buildRequestData(model, filteredMessageArray, root.systemPrompt, root.temperature, root.tools[model.api_format][root.currentTool]);
+            const data = root.currentApiStrategy.buildRequestData(model, filteredMessageArray, root.systemPrompt, root.temperature, root.tools[model.api_format][root.currentTool], root.pendingFilePath);
             // console.log("[Ai] Request data: ", JSON.stringify(data, null, 2));
 
             let requestHeaders = {
@@ -655,14 +646,31 @@ Singleton {
             /* Get authorization header from strategy */
             const authHeader = requester.currentStrategy.buildAuthorizationHeader(root.apiKeyEnvVarName);
             
+            /* Script shebang */
+            const scriptShebang = "#!/usr/bin/env bash\n";
+
+            /* Create extra setup when there's an attached file */
+            let scriptFileSetupContent = ""
+            if (root.pendingFilePath && root.pendingFilePath.length > 0) {
+                requester.message.localFilePath = root.pendingFilePath;
+                scriptFileSetupContent = requester.currentStrategy.buildScriptFileSetup(root.pendingFilePath);
+                root.pendingFilePath = ""
+            }
+
             /* Create command string */
-            const requestCommandString = `curl --no-buffer "${endpoint}"`
+            let scriptRequestContent = ""
+            scriptRequestContent += `curl --no-buffer "${endpoint}"`
                 + ` ${headerString}`
                 + (authHeader ? ` ${authHeader}` : "")
-                + ` -d '${CF.StringUtils.shellSingleQuoteEscape(JSON.stringify(data))}'`
+                + ` --data '${CF.StringUtils.shellSingleQuoteEscape(JSON.stringify(data))}'`
+                + "\n"
             
             /* Send the request */
-            requester.command = baseCommand.concat([requestCommandString]);
+            const scriptContent = requester.currentStrategy.finalizeScriptContent(scriptShebang + scriptFileSetupContent + scriptRequestContent)
+            const shellScriptPath = CF.FileUtils.trimFileProtocol(root.requestScriptFilePath)
+            requesterScriptFile.path = Qt.resolvedUrl(shellScriptPath)
+            requesterScriptFile.setText(scriptContent)
+            requester.command = baseCommand.concat([shellScriptPath]);
             requester.running = true
         }
 
@@ -676,7 +684,7 @@ Singleton {
                 try {
                     const result = requester.currentStrategy.parseResponseLine(data, requester.message);
                     // console.log("[Ai] Parsed response result: ", JSON.stringify(result, null, 2));
-                    
+
                     if (result.functionCall) {
                         requester.message.functionCall = result.functionCall;
                         root.handleFunctionCall(result.functionCall.name, result.functionCall.args, requester.message);
@@ -717,6 +725,22 @@ Singleton {
     function sendUserMessage(message) {
         if (message.length === 0) return;
         root.addMessage(message, "user");
+        requester.makeRequest();
+    }
+
+    function attachFile(filePath: string) {
+        root.pendingFilePath = CF.FileUtils.trimFileProtocol(filePath);
+    }
+
+    function regenerate(messageIndex) {
+        if (messageIndex < 0 || messageIndex >= messageIDs.length) return;
+        const id = root.messageIDs[messageIndex];
+        const message = root.messageByID[id];
+        if (message.role !== "assistant") return;
+        // Remove all messages after this one
+        for (let i = root.messageIDs.length - 1; i >= messageIndex; i--) {
+            root.removeMessage(i);
+        }
         requester.makeRequest();
     }
 
@@ -819,6 +843,9 @@ Singleton {
             return ({
                 "role": message.role,
                 "rawContent": message.rawContent,
+                "fileMimeType": message.fileMimeType,
+                "fileUri": message.fileUri,
+                "localFilePath": message.localFilePath,
                 "model": message.model,
                 "thinking": false,
                 "done": true,
@@ -834,9 +861,9 @@ Singleton {
 
     FileView {
         id: chatSaveFile
-        property string chatName: "chat"
-        path: `${Directories.aiChats}/${chatName}.json`
-        blockLoading: true
+        property string chatName: ""
+        path: chatName.length > 0 ? `${Directories.aiChats}/${chatName}.json` : ""
+        blockLoading: true // Prevent race conditions
     }
 
     /**
@@ -872,6 +899,9 @@ Singleton {
                     "role": message.role,
                     "rawContent": message.rawContent,
                     "content": message.rawContent,
+                    "fileMimeType": message.fileMimeType,
+                    "fileUri": message.fileUri,
+                    "localFilePath": message.localFilePath,
                     "model": message.model,
                     "thinking": message.thinking,
                     "done": message.done,

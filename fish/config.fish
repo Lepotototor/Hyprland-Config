@@ -154,3 +154,6 @@ alias rip="expac --timefmt='%Y-%m-%d %T' '%l\t%n %v' | sort | tail -200 | nl"
 #neofetch --ascii ~/.config/fish/ascii_neofetch
 #neofetch
 fastfetch
+
+export PGDATA="$HOME/postgres_data"
+export PGHOST="/tmp"

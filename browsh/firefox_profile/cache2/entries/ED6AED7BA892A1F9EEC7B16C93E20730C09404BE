@@ -1,0 +1,1519 @@
+function getSandboxIframe() {
+    const iframe = document.createElement('iframe');
+
+    iframe.sandbox.add('allow-same-origin', 'allow-popups', 'allow-scripts');
+    iframe.style.border = 'none';
+    iframe.style.width = '100%';
+    iframe.style.height = '60vh';
+
+    return iframe;
+}
+
+function getCssLinkFor(path) {
+    const link = document.createElement('link');
+
+    link.rel = 'stylesheet';
+    link.type = 'text/css';
+    link.href = path;
+
+    return link;
+}
+
+function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+
+    if (parts.length === 2) return parts.pop().split(';').shift();
+}
+
+class ClassWatcher {
+    constructor(targetNode, classToWatch, classAddedCallback, classRemovedCallback) {
+        this.targetNode = targetNode
+        this.classToWatch = classToWatch
+        this.classAddedCallback = classAddedCallback
+        this.classRemovedCallback = classRemovedCallback
+        this.observer = null
+        this.lastClassState = targetNode.classList.contains(this.classToWatch)
+
+        this.init()
+    }
+
+    init() {
+        this.observer = new MutationObserver(this.mutationCallback)
+        this.observe()
+    }
+
+    observe() {
+        this.observer.observe(this.targetNode, {attributes: true})
+    }
+
+    disconnect() {
+        this.observer.disconnect()
+    }
+
+    mutationCallback = mutationsList => {
+        for (let mutation of mutationsList) {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                let currentClassState = mutation.target.classList.contains(this.classToWatch)
+                if (this.lastClassState !== currentClassState) {
+                    this.lastClassState = currentClassState
+                    if (currentClassState) {
+                        this.classAddedCallback()
+                    } else {
+                        this.classRemovedCallback()
+                    }
+                }
+            }
+        }
+    }
+}
+
+class SubjectLoader extends HTMLElement {
+    constructor() {
+        super();
+
+        this._root = this.attachShadow({mode: 'open'});
+        const domain = window.location.protocol + '//' + location.host + '/';
+        const basePath = domain + this.getAttribute('path');
+        const tenantSlug = window.location.pathname.split("/")[1];
+
+        fetch(basePath).then(async (res) => {
+            if (res.status !== 200) {
+                this._root.innerHTML = `<div class="subject" style="font-size: 0.8em">Failed to load the document</div>`;
+                return;
+            }
+
+            let html = await res.text();
+            const iframe = getSandboxIframe();
+
+            if (html.indexOf('<html') !== -1) {
+                iframe.src = basePath;
+            } else {
+                iframe.onload = () => {
+                    iframe.contentDocument.head.appendChild(getCssLinkFor('/assets/css/style.css'));
+                    iframe.contentDocument.head.appendChild(getCssLinkFor('/assets/css/subject.css'));
+                    iframe.contentDocument.head.appendChild(getCssLinkFor(`/${tenantSlug}/css`));
+
+                    const base = document.createElement('base');
+                    base.target = '_blank';
+                    iframe.contentDocument.head.appendChild(base);
+
+                    iframe.contentDocument.body.classList.add(
+                        getCookie('theme') ?? 'dark',
+                        'sandbox-embedded'
+                    );
+
+                    iframe.contentDocument.body.innerHTML = html;
+                }
+            }
+
+            new ClassWatcher(
+                document.body,
+                'dark',
+                () => {
+                    iframe.contentDocument.body.classList.add('dark');
+                    iframe.contentDocument.body.classList.remove('light');
+                },
+                () => {
+                    iframe.contentDocument.body.classList.add('light');
+                    iframe.contentDocument.body.classList.remove('dark');
+                }
+            );
+
+
+            this._root.appendChild(iframe);
+        });
+    }
+}
+
+
+const timerSvg = `<svg width="9" height="11" viewBox="0 0 9 11" fill="none" xmlns="http://www.w3.org/2000/svg" style="height: 12px; width: 12px;">
+<path d="M0.708293 10.9167C0.55482 10.9167 0.426084 10.8647 0.322084 10.7607C0.218446 10.657 0.166626 10.5285 0.166626 10.375C0.166626 10.2215 0.218446 10.093 0.322084 9.98933C0.426084 9.88533 0.55482 9.83333 0.708293 9.83333H1.24996V8.20833C1.24996 7.65763 1.3787 7.1407 1.63617 6.65754C1.89328 6.17473 2.25204 5.78888 2.71246 5.49999C2.25204 5.21111 1.89328 4.82508 1.63617 4.34191C1.3787 3.85911 1.24996 3.34236 1.24996 2.79166V1.16666H0.708293C0.55482 1.16666 0.426084 1.11466 0.322084 1.01066C0.218446 0.907023 0.166626 0.778467 0.166626 0.624995C0.166626 0.471523 0.218446 0.342787 0.322084 0.238787C0.426084 0.135148 0.55482 0.0833282 0.708293 0.0833282H8.29163C8.4451 0.0833282 8.57365 0.135148 8.67729 0.238787C8.78129 0.342787 8.83329 0.471523 8.83329 0.624995C8.83329 0.778467 8.78129 0.907023 8.67729 1.01066C8.57365 1.11466 8.4451 1.16666 8.29163 1.16666H7.74996V2.79166C7.74996 3.34236 7.6214 3.85911 7.36429 4.34191C7.10682 4.82508 6.74788 5.21111 6.28746 5.49999C6.74788 5.78888 7.10682 6.17473 7.36429 6.65754C7.6214 7.1407 7.74996 7.65763 7.74996 8.20833V9.83333H8.29163C8.4451 9.83333 8.57365 9.88533 8.67729 9.98933C8.78129 10.093 8.83329 10.2215 8.83329 10.375C8.83329 10.5285 8.78129 10.657 8.67729 10.7607C8.57365 10.8647 8.4451 10.9167 8.29163 10.9167H0.708293Z" fill="currentColor"/>
+</svg>`
+
+class ProjectTimer extends HTMLElement {
+    constructor() {
+        super();
+
+        this._root = this.attachShadow({mode: 'open'});
+
+        const openingAt = this.getAttribute('openingAt');
+        const closingAt = this.getAttribute('closingAt');
+
+        this.opening = new Date(openingAt.slice(0, openingAt.indexOf('[')));
+        this.closing = new Date(closingAt.slice(0, closingAt.indexOf('[')));
+
+        this.colored = this.getAttribute('colored') === 'true';
+
+        this.render();
+    }
+
+    render() {
+        const now = new Date();
+        const beginString = `<div style="display: flex; align-items: center; gap: 8px">${timerSvg}`;
+        const date = now < this.opening ? this.opening : this.closing;
+
+        const diff = new Date() - date;
+        let result = this.timeSince(date)
+
+        if (diff > 0) {
+            result += ' ago';
+        } else if (date === this.opening) {
+            result = 'In ' + result;
+        } else {
+            result += ' left';
+        }
+
+        this._root.innerHTML = `${beginString}${result}</div>`;
+        if (this.colored) {
+            this.style.color = this.getColor(date);
+        }
+    }
+
+    getColor(date) {
+        const diff = Math.abs(Math.floor((new Date() - date) / 1000));
+
+        let interval = 60 * 60 * 24;
+        if (diff < interval) return '#C93622';
+
+        interval = interval * 7;
+        if (diff < interval) return '#DA8017';
+
+        interval = interval * 2;
+        if (diff < interval) return '#DAC617';
+
+        return '#61BE28';
+
+    }
+
+    timeSince(date) {
+        const diff = new Date() - date;
+        const seconds = Math.abs(Math.floor(diff / 1000));
+        let interval = seconds / 31536000;
+
+        if (interval > 1) return Math.floor(interval) + ` year${interval >= 2 ? 's' : ''}`;
+        interval = seconds / 2592000;
+
+        if (interval > 1) return Math.floor(interval) + ` month${interval >= 2 ? 's' : ''}`;
+        interval = seconds / 86400;
+
+        if (interval > 1) return Math.floor(interval) + ` day${interval >= 2 ? 's' : ''}`;
+        interval = seconds / 3600;
+
+        if (interval > 1) return Math.floor(interval) + ` hour${interval >= 2 ? 's' : ''}`;
+        interval = seconds / 60;
+
+        if (interval > 1) return Math.floor(interval) + ` minute${interval >= 2 ? 's' : ''}`;
+
+        return Math.floor(seconds) + ` second${interval >= 2 ? 's' : ''}`;
+    }
+
+}
+
+const groupSvg = `<svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M3.99959 4.01042C3.55515 4.01042 3.17487 3.85236 2.85876 3.53625C2.54293 3.22042 2.38501 2.84028 2.38501 2.39583C2.38501 1.94444 2.54293 1.5625 2.85876 1.25C3.17487 0.9375 3.55515 0.78125 3.99959 0.78125C4.45098 0.78125 4.83293 0.9375 5.14543 1.25C5.45793 1.5625 5.61418 1.94444 5.61418 2.39583C5.61418 2.84028 5.45793 3.22042 5.14543 3.53625C4.83293 3.85236 4.45098 4.01042 3.99959 4.01042ZM0.76001 7.19792V6.09375C0.76001 5.86458 0.819038 5.65444 0.937093 5.46333C1.05515 5.2725 1.2114 5.12847 1.40584 5.03125C1.82945 4.82292 2.25834 4.66486 2.69251 4.55708C3.1264 4.44958 3.56209 4.39583 3.99959 4.39583C4.44404 4.39583 4.88154 4.44958 5.31209 4.55708C5.74265 4.66486 6.16973 4.82292 6.59334 5.03125C6.79473 5.12847 6.95279 5.2725 7.06751 5.46333C7.18195 5.65444 7.23918 5.86458 7.23918 6.09375V7.19792H0.76001Z" fill="var(--background)"/>
+</svg>`
+
+class GroupSize extends HTMLElement {
+    constructor() {
+        super();
+
+        this._root = this.attachShadow({mode: 'open'});
+
+        const size = parseInt(this.getAttribute('size'));
+
+        let str = `${size === 1 ? 'Solo' : size}<span style="background: var(--primary-text); padding: 4px 4px; border-radius: 50px; display: flex">`;
+        for (let i = 0; i < size; i++) {
+            str += groupSvg;
+        }
+        str += '</span>';
+
+        this._root.innerHTML = `<div style="display: flex; align-items: center; gap: 10px">${str}</div>`;
+    }
+}
+
+class ProgressBar extends HTMLElement {
+    constructor() {
+        super();
+        this._root = this.attachShadow({mode: 'open'});
+
+        let points = parseInt(this.getAttribute('points'));
+        let threshold = parseInt(this.getAttribute('threshold'));
+
+        if (points > threshold) points = threshold;
+
+        let width = threshold !== 0 ? points / threshold * 100 : 100;
+
+        this._root.innerHTML = `<div style="position:relative;">
+<div style="position: absolute; width: 100%; height: 5px; background-color: var(--background); border-radius: 5px"></div>
+<div style="position: absolute; width: ${width}%; height: 5px; background-color: ${this.getColor(width)}; border-radius: 5px"></div>
+</div>`;
+    }
+
+    getColor(value) {
+        if (value === 100) {
+            return '#61BE28';
+        }
+
+        value /= 10;
+
+
+        const min = [201, 54, 34];
+        const max = [218, 198, 23];
+
+
+        let result = '#';
+        for (let i = 0; i < 3; i++) {
+            result += Math.round(min[i] + (max[i] - min[i]) * (value / 10)).toString(16).padStart(2, '0');
+        }
+        return result;
+    }
+}
+
+class TraceSymbol extends HTMLElement {
+    constructor() {
+        super();
+        this._root = this.attachShadow({mode: 'open'});
+
+        let status = this.getAttribute("status");
+        let errorStatus = this.getAttribute("errorStatus");
+        let validated = this.getAttribute("validated") === "true";
+        let successPercent = parseInt(this.getAttribute("successPercent"));
+
+
+        if (status === "IDLE") {
+            this._root.innerHTML = `<svg style="width: 25px; height: 25px" viewBox="0 0 9 11" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M0.708293 10.9167C0.55482 10.9167 0.426084 10.8647 0.322084 10.7607C0.218446 10.657 0.166626 10.5285 0.166626 10.375C0.166626 10.2215 0.218446 10.093 0.322084 9.98933C0.426084 9.88533 0.55482 9.83333 0.708293 9.83333H1.24996V8.20833C1.24996 7.65763 1.3787 7.1407 1.63617 6.65754C1.89328 6.17473 2.25204 5.78888 2.71246 5.49999C2.25204 5.21111 1.89328 4.82508 1.63617 4.34191C1.3787 3.85911 1.24996 3.34236 1.24996 2.79166V1.16666H0.708293C0.55482 1.16666 0.426084 1.11466 0.322084 1.01066C0.218446 0.907023 0.166626 0.778467 0.166626 0.624995C0.166626 0.471523 0.218446 0.342787 0.322084 0.238787C0.426084 0.135148 0.55482 0.0833282 0.708293 0.0833282H8.29163C8.4451 0.0833282 8.57365 0.135148 8.67729 0.238787C8.78129 0.342787 8.83329 0.471523 8.83329 0.624995C8.83329 0.778467 8.78129 0.907023 8.67729 1.01066C8.57365 1.11466 8.4451 1.16666 8.29163 1.16666H7.74996V2.79166C7.74996 3.34236 7.6214 3.85911 7.36429 4.34191C7.10682 4.82508 6.74788 5.21111 6.28746 5.49999C6.74788 5.78888 7.10682 6.17473 7.36429 6.65754C7.6214 7.1407 7.74996 7.65763 7.74996 8.20833V9.83333H8.29163C8.4451 9.83333 8.57365 9.88533 8.67729 9.98933C8.78129 10.093 8.83329 10.2215 8.83329 10.375C8.83329 10.5285 8.78129 10.657 8.67729 10.7607C8.57365 10.8647 8.4451 10.9167 8.29163 10.9167H0.708293Z" fill="currentColor"/>
+</svg>`;
+        } else if (status === "PROCESSING") {
+            this.classList.add("rotating");
+            this._root.innerHTML = `<svg style="width: 25px; height: 25px" width="16" height="22" viewBox="0 0 16 22" fill="none" xmlns="http://www.w3.org/2000/svg"><title>Received</title>
+                <path d="M0.599902 13.575C0.449902 13.1583 0.337569 12.7373 0.262902 12.312C0.187569 11.8873 0.149902 11.4583 0.149902 11.025C0.149902 8.825 0.912569 6.96233 2.4379 5.437C3.96257 3.91233 5.8249 3.15 8.0249 3.15H8.2749L7.3249 2.175C7.14157 2.00833 7.0499 1.79167 7.0499 1.525C7.0499 1.25833 7.14157 1.03333 7.3249 0.850001C7.50824 0.666667 7.72924 0.575001 7.9879 0.575001C8.2459 0.575001 8.46657 0.666667 8.6499 0.850001L11.1999 3.45C11.2999 3.53333 11.3709 3.63333 11.4129 3.75C11.4542 3.86667 11.4749 3.98333 11.4749 4.1C11.4749 4.21667 11.4542 4.329 11.4129 4.437C11.3709 4.54567 11.2999 4.65 11.1999 4.75L8.6499 7.3C8.46657 7.48333 8.2459 7.575 7.9879 7.575C7.72924 7.575 7.50824 7.48333 7.3249 7.3C7.14157 7.11667 7.0499 6.89567 7.0499 6.637C7.0499 6.379 7.14157 6.15833 7.3249 5.975L8.2749 5.025H8.0249C6.35824 5.025 4.94157 5.604 3.7749 6.762C2.60824 7.92067 2.0249 9.34167 2.0249 11.025C2.0249 11.3583 2.05424 11.6833 2.1129 12C2.1709 12.3167 2.25824 12.6333 2.3749 12.95C2.44157 13.1 2.45824 13.2627 2.4249 13.438C2.39157 13.6127 2.31657 13.7583 2.1999 13.875C1.8999 14.1583 1.59157 14.2707 1.2749 14.212C0.958236 14.154 0.733235 13.9417 0.599902 13.575ZM7.3749 21.075L4.7999 18.5C4.71657 18.4 4.65424 18.296 4.6129 18.188C4.5709 18.0793 4.5499 17.9667 4.5499 17.85C4.5499 17.7167 4.5709 17.5957 4.6129 17.487C4.65424 17.379 4.71657 17.2833 4.7999 17.2L7.3749 14.625C7.55824 14.4417 7.77924 14.35 8.0379 14.35C8.2959 14.35 8.51657 14.4417 8.6999 14.625C8.88323 14.8083 8.9749 15.0293 8.9749 15.288C8.9749 15.546 8.88323 15.7667 8.6999 15.95L7.7249 16.925H7.9749C9.65824 16.925 11.0792 16.3417 12.2379 15.175C13.3959 14.0083 13.9749 12.5917 13.9749 10.925C13.9749 10.5917 13.9459 10.2667 13.8879 9.95C13.8292 9.63333 13.7416 9.30833 13.6249 8.975C13.5749 8.825 13.5666 8.66667 13.5999 8.5C13.6332 8.33333 13.7082 8.19167 13.8249 8.075C14.1082 7.775 14.4126 7.65833 14.7379 7.725C15.0626 7.79167 15.2832 8 15.3999 8.35C15.5499 8.76667 15.6626 9.19167 15.7379 9.625C15.8126 10.0583 15.8499 10.4917 15.8499 10.925C15.8499 13.1083 15.0916 14.9667 13.5749 16.5C12.0582 18.0333 10.1916 18.8 7.9749 18.8H7.7249L8.6999 19.75C8.86657 19.9333 8.9499 20.1583 8.9499 20.425C8.9499 20.6917 8.86657 20.9083 8.6999 21.075C8.51657 21.2583 8.2959 21.35 8.0379 21.35C7.77924 21.35 7.55824 21.2583 7.3749 21.075Z"
+                  fill="currentColor"/>
+            </svg>`;
+        } else if (status === "ERROR") {
+            if (errorStatus === "QUOTA_EXCEEDED") {
+                this._root.innerHTML = `<div style="color: ${this.getColor(0)}"><svg <svg style="width: 25px; height: 25px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><title>Quota exceeded</title>
+                <circle cx="256" cy="256" r="208" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="32"/>
+                <path fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="32" d="M108.92 108.92l294.16 294.16"/>
+            </svg></div>`;
+            } else if (errorStatus === "NOT_ACCESSIBLE") {
+                this._root.innerHTML = `<div style="color: ${this.getColor(0)}"><svg style="width: 25px; height: 25px" xmlns="http://www.w3.org/2000/svg" class="ionicon" viewBox="0 0 512 512"><title>Git Pull Request</title>
+<circle cx="128" cy="416" r="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M128 144v224M288 160l-64-64 64-64"/>
+<circle cx="128" cy="96" r="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+<circle cx="384" cy="416" r="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+<path d="M240 96h84a60 60 0 0160 60v212" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+</svg></div>`;
+            } else {
+                this._root.innerHTML = `<div style="color: ${this.getColor(0)}"><svg style="width: 25px; height: 25px" xmlns="http://www.w3.org/2000/svg" class="ionicon" viewBox="0 0 512 512"><title>Failed</title>
+                    <path d="M256 80c-8.66 0-16.58 7.36-16 16l8 216a8 8 0 008 8h0a8 8 0 008-8l8-216c.58-8.64-7.34-16-16-16z" fill="none" stroke="currentColor"
+                          stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+                    <circle cx="256" cy="416" r="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+                </svg></div>`;
+            }
+        } else if (validated) {
+            this._root.innerHTML = `<div style="color: var(--checkmark); margin-top: 2px;"><svg style="width: 20px; height: 20px" width="20" height="16" viewBox="0 0 20 16" fill="none" xmlns="http://www.w3.org/2000/svg"><title>Published</title>
+                            <path d="M2.92432 8.30849C2.45957 7.79801 1.66898 7.76093 1.15849 8.22568C0.648006 8.69043 0.610929 9.48102 1.07568 9.99151L2.92432 8.30849ZM6.54739 14.1449L5.62307 14.9864L5.62307 14.9864L6.54739 14.1449ZM8.0597 14.1063L7.09363 13.313L7.09363 13.3131L8.0597 14.1063ZM18.9661 2.79323C19.4042 2.25968 19.3268 1.47202 18.7932 1.03393C18.2597 0.595843 17.472 0.673227 17.0339 1.20677L18.9661 2.79323ZM1.07568 9.99151L5.62307 14.9864L7.47171 13.3034L2.92432 8.30849L1.07568 9.99151ZM9.02577 14.8995L18.9661 2.79323L17.0339 1.20677L7.09363 13.313L9.02577 14.8995ZM5.62307 14.9864C6.54661 16.0008 8.15521 15.9598 9.02577 14.8995L7.09363 13.3131C7.19036 13.1952 7.36909 13.1907 7.47171 13.3034L5.62307 14.9864Z"
+                                  fill="currentColor"/>
+                    </svg></div>`;
+        } else {
+            this._root.innerHTML = `<div style="color: ${this.getColor(successPercent)}">${successPercent}%</div>`;
+        }
+
+    }
+
+    getColor(value) {
+        if (value === 100) {
+            return '#61BE28';
+        }
+
+        value /= 10;
+
+
+        const min = [201, 54, 34];
+        const max = [218, 198, 23];
+
+
+        let result = '#';
+        for (let i = 0; i < 3; i++) {
+            result += Math.round(min[i] + (max[i] - min[i]) * (value / 10)).toString(16).padStart(2, '0');
+        }
+        return result;
+    }
+}
+
+
+/**
+ * @property {HTMLInputElement} input
+ * @property {SpotlightItem[]} items
+ * @property {SpotlightItem} activeItem
+ * @property {HTMLUListElement} suggestions
+ */
+class Spotlight extends HTMLElement {
+
+
+    constructor() {
+        super();
+        this.shortcutHandler = this.shortcutHandler.bind(this)
+        this.hide = this.hide.bind(this)
+        this.onInput = this.onInput.bind(this)
+        this.inputShortcutHandler = this.inputShortcutHandler.bind(this)
+        this.items = [];
+        this.currentIndex = -1;
+
+        window.fetch('/api/activities', {
+            cache: "no-store"
+        }).then(async (res) => {
+            this.activities = (await res.json())['activities'];
+        })
+    }
+
+    connectedCallback() {
+        this.classList.add('spotlight')
+        this.innerHTML = `
+      <div class="spotlight-bar">
+        <input type="text" placeholder="Search an activity">
+        <ul class="spotlight-suggestions" hidden>
+        </ul>
+      </div>
+    `;
+
+        const spotlightBar = this.querySelector('.spotlight-bar');
+        this.input = this.querySelector('input');
+        this.suggestions = this.querySelector('.spotlight-suggestions')
+
+        document.addEventListener('click', ev => {
+            if (!spotlightBar.contains(ev.target)) {
+                this.hide()
+            }
+        });
+
+        window.addEventListener('keydown', this.shortcutHandler);
+        this.input.addEventListener('input', this.onInput);
+        this.input.addEventListener('keydown', this.inputShortcutHandler);
+    }
+
+    disconnectedCallback() {
+        window.removeEventListener('keydown', this.shortcutHandler);
+    }
+
+    shortcutHandler(e) {
+        if (e.key === 'k' && this.shortcutKey(e)) {
+            e.preventDefault()
+            this.classList.add('active')
+            this.input.value = ''
+            this.onInput()
+            this.input.focus()
+        }
+    }
+
+    shortcutKey(e) {
+        if (navigator.platform.includes('Mac')) {
+            return e.metaKey;
+        }
+
+        return e.ctrlKey;
+    }
+
+    hide() {
+        this.classList.remove('active')
+    }
+
+    onInput() {
+        const search = this.input.value.trim()
+
+        if (search === '') {
+            this.items = [];
+            this.suggestions.setAttribute('hidden', 'hidden');
+            return;
+        }
+
+        // Firstly, get data & reset content
+        const matchingActivities = this.activities.filter(activity => activity.name.toLowerCase().includes(search.toLowerCase()))
+        this.suggestions.innerHTML = '';
+        this.items = [];
+        this.currentIndex = -1;
+
+        if (matchingActivities.length === 0) {
+            this.suggestions.setAttribute('hidden', 'hidden');
+        } else {
+            this.suggestions.removeAttribute('hidden');
+            this.suggestions.innerHTML = '';
+            for (let i = 0; i < matchingActivities.length; i++) {
+                const item = new SpotlightItem(matchingActivities[i].name, matchingActivities[i].href);
+                this.items.push(item);
+                this.suggestions.appendChild(item.element);
+            }
+        }
+    }
+
+    setActiveIndex(n) {
+        if (n >= this.items.length) {
+            n = 0
+        }
+        if (n < 0) {
+            n = this.items.length - 1
+        }
+
+        if (this.currentIndex !== -1)
+            this.items[this.currentIndex].unselect();
+
+        this.items[n].select()
+        this.currentIndex = n;
+    }
+
+    /**
+     * @param {KeyboardEvent} e
+     */
+    inputShortcutHandler(e) {
+        if (e.key === 'Escape') {
+            this.hide()
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault()
+            this.setActiveIndex(this.currentIndex + 1);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            this.setActiveIndex(this.currentIndex - 1);
+        } else if (e.key === 'Enter') {
+            if (this.currentIndex !== -1)
+                this.items[this.currentIndex].follow();
+        }
+    }
+}
+
+/**
+ * @property {HTMLLIElement} element
+ * @property {string} title
+ * @property {string} href
+ */
+class SpotlightItem {
+    /**
+     * @param {string} title
+     * @param {string} href
+     */
+    constructor(title, href) {
+        const li = document.createElement('li')
+        const a = document.createElement('a')
+        a.setAttribute('href', href)
+        a.innerText = title
+        li.appendChild(a)
+        this.element = li
+        this.title = title
+        this.href = href
+    }
+
+
+    hide() {
+        this.element.setAttribute('hidden', 'hidden')
+    }
+
+    select() {
+        this.element.classList.add('active')
+    }
+
+    unselect() {
+        this.element.classList.remove('active')
+    }
+
+    follow() {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('login') !== null) this.href += `?login=${params.get('login')}`
+        window.location.href = this.href
+    }
+}
+
+
+class MarkdownViewer extends HTMLElement {
+    constructor() {
+        super();
+
+        this._root = this.attachShadow({mode: 'open'});
+        this.content = this.getAttribute('content');
+    }
+
+    connectedCallback() {
+        const converter = new showdown.Converter();
+        const normalizedContent = this.content.replaceAll('\\n', '\n')
+        const html = converter.makeHtml(normalizedContent); // TODO should be fixed
+        const normalizedHtml = html.replaceAll('h1', 'h4')
+            .replaceAll('h2', 'h5')
+            .replaceAll('h3', 'h6')
+        this._root.innerHTML = normalizedHtml;
+    }
+}
+
+window.customElements.define('subject-loader', SubjectLoader);
+window.customElements.define('project-timer', ProjectTimer);
+window.customElements.define('group-size', GroupSize);
+window.customElements.define('progress-bar', ProgressBar);
+window.customElements.define('trace-symbol', TraceSymbol);
+window.customElements.define('spotlight-bar', Spotlight)
+window.customElements.define('markdown-viewer', MarkdownViewer)
+
+window.addEventListener("pageshow", function (event) {
+    const historyTraversal = event.persisted || (typeof window.performance != "undefined" && window.performance.navigation.type === 2);
+    if (historyTraversal) {
+        window.location.reload();
+    }
+});
+
+// Manage mobile
+window.addEventListener('resize', onResize);
+
+function onResize() {
+    if (window.innerWidth < 500) {
+        document.querySelector("body").style.height = `${window.innerHeight}px`;
+        document.querySelector("main").style.height = `${window.innerHeight - 76}px`;
+    }
+}
+
+onResize();
+
+mermaid.initialize({startOnLoad: true, theme: 'dark', maxTextSize: 500000})
+
+function initGraph() {
+    const graph = document.querySelector("#graph");
+
+    if (graph === null) return;
+
+    if (graph.dataset['processed'] !== "true") {
+        setTimeout(initGraph, 50);
+        return;
+    }
+
+    const params = new Proxy(new URLSearchParams(window.location.search), {
+        get: (searchParams, prop) => searchParams.get(prop),
+    });
+    const impersonate = params.login !== null ? `?login=${params.login}` : ""
+
+    document.querySelectorAll(".statediagram-state").forEach(el => {
+
+        const resource = el.id.split('\"')[1].replaceAll("~", '-');
+        const nodeRequired = resource.split("/")[0].slice("_required=".length) === "true";
+        const nodeValidated = resource.split("/")[1].slice("_validated=".length) === "true";
+        const nodeAccessible = resource.split("/")[2].slice("_accessible=".length) === "true";
+
+        if (nodeRequired) {
+            for (let child of el.children) {
+                if (child.tagName === 'rect') {
+                    child.style.stroke = 'var(--required)';
+                    child.style.strokeWidth = '2px';
+                }
+            }
+        }
+
+        if (nodeRequired && nodeValidated) {
+            for (let child of el.children) {
+                if (child.tagName === 'rect') {
+                    child.style.stroke = 'var(--required-validated)';
+                    child.style.strokeWidth = '2px';
+                    child.style.fill = 'var(--required-validated)';
+                }
+            }
+        } else if (nodeValidated) {
+            for (let child of el.children) {
+                if (child.tagName === 'rect') {
+                    child.style.stroke = 'var(--trivial)';
+                    child.style.strokeWidth = '2px';
+                    child.style.fill = 'var(--trivial)';
+                }
+            }
+        }
+
+        const resourcePath = nodeAccessible ?
+            "href=\"/" + resource.split("/").slice(3).join("/") + impersonate + "\"" :
+            `style="cursor: not-allowed; opacity: 0.3;"`;
+
+        el.innerHTML = `<a ${resourcePath}>${el.innerHTML}</a>`;
+    });
+
+}
+
+setTimeout(initGraph, 50);
+
+function addGraphController() {
+    const svg = document.querySelector('.statediagram');
+
+    if (document.location.pathname.split("/").length <= 2) return;
+
+    if (svg === null) {
+        setTimeout(addGraphController, 100);
+        return;
+    }
+
+    svg.setAttribute('height', Math.max(svg.clientHeight, 200) + 'px')
+    svg.style.maxWidth = null
+
+    svgPanZoom('.statediagram', {
+        panEnabled: true
+        , controlIconsEnabled: true
+        , zoomEnabled: true
+        , dblClickZoomEnabled: true
+        , mouseWheelZoomEnabled: true
+        , preventMouseEventsDefault: false
+        , zoomScaleSensitivity: 0.2
+        , minZoom: 0.5
+        , maxZoom: 10
+        , fit: true
+        , contain: true
+        , center: true
+        , refreshRate: 'auto'
+    });
+}
+
+setTimeout(addGraphController, 100);
+        ò$ x ˇˇ     20251013184459-8l{$ Î®π0   https://intra.forge.epita.fr/assets/js/script.js      ˛o  function getSandboxIframe() {
+    const iframe = document.createElement('iframe');
+
+    iframe.sandbox.add('allow-same-origin', 'allow-popups', 'allow-scripts');
+    iframe.style.border = 'none';
+    iframe.style.width = '100%';
+    iframe.style.height = '60vh';
+
+    return iframe;
+}
+
+function getCssLinkFor(path) {
+    const link = document.createElement('link');
+
+    link.rel = 'stylesheet';
+    link.type = 'text/css';
+    link.href = path;
+
+    return link;
+}
+
+function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+
+    if (parts.length === 2) return parts.pop().split(';').shift();
+}
+
+class ClassWatcher {
+    constructor(targetNode, classToWatch, classAddedCallback, classRemovedCallback) {
+        this.targetNode = targetNode
+        this.classToWatch = classToWatch
+        this.classAddedCallback = classAddedCallback
+        this.classRemovedCallback = classRemovedCallback
+        this.observer = null
+        this.lastClassState = targetNode.classList.contains(this.classToWatch)
+
+        this.init()
+    }
+
+    init() {
+        this.observer = new MutationObserver(this.mutationCallback)
+        this.observe()
+    }
+
+    observe() {
+        this.observer.observe(this.targetNode, {attributes: true})
+    }
+
+    disconnect() {
+        this.observer.disconnect()
+    }
+
+    mutationCallback = mutationsList => {
+        for (let mutation of mutationsList) {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                let currentClassState = mutation.target.classList.contains(this.classToWatch)
+                if (this.lastClassState !== currentClassState) {
+                    this.lastClassState = currentClassState
+                    if (currentClassState) {
+                        this.classAddedCallback()
+                    } else {
+                        this.classRemovedCallback()
+                    }
+                }
+            }
+        }
+    }
+}
+
+class SubjectLoader extends HTMLElement {
+    constructor() {
+        super();
+
+        this._root = this.attachShadow({mode: 'open'});
+        const domain = window.location.protocol + '//' + location.host + '/';
+        const basePath = domain + this.getAttribute('path');
+        const tenantSlug = window.location.pathname.split("/")[1];
+
+        fetch(basePath).then(async (res) => {
+            if (res.status !== 200) {
+                this._root.innerHTML = `<div class="subject" style="font-size: 0.8em">Failed to load the document</div>`;
+                return;
+            }
+
+            let html = await res.text();
+            const iframe = getSandboxIframe();
+
+            if (html.indexOf('<html') !== -1) {
+                iframe.src = basePath;
+            } else {
+                iframe.onload = () => {
+                    iframe.contentDocument.head.appendChild(getCssLinkFor('/assets/css/style.css'));
+                    iframe.contentDocument.head.appendChild(getCssLinkFor('/assets/css/subject.css'));
+                    iframe.contentDocument.head.appendChild(getCssLinkFor(`/${tenantSlug}/css`));
+
+                    const base = document.createElement('base');
+                    base.target = '_blank';
+                    iframe.contentDocument.head.appendChild(base);
+
+                    iframe.contentDocument.body.classList.add(
+                        getCookie('theme') ?? 'dark',
+                        'sandbox-embedded'
+                    );
+
+                    iframe.contentDocument.body.innerHTML = html;
+                }
+            }
+
+            new ClassWatcher(
+                document.body,
+                'dark',
+                () => {
+                    iframe.contentDocument.body.classList.add('dark');
+                    iframe.contentDocument.body.classList.remove('light');
+                },
+                () => {
+                    iframe.contentDocument.body.classList.add('light');
+                    iframe.contentDocument.body.classList.remove('dark');
+                }
+            );
+
+
+            this._root.appendChild(iframe);
+        });
+    }
+}
+
+
+const timerSvg = `<svg width="9" height="11" viewBox="0 0 9 11" fill="none" xmlns="http://www.w3.org/2000/svg" style="height: 12px; width: 12px;">
+<path d="M0.708293 10.9167C0.55482 10.9167 0.426084 10.8647 0.322084 10.7607C0.218446 10.657 0.166626 10.5285 0.166626 10.375C0.166626 10.2215 0.218446 10.093 0.322084 9.98933C0.426084 9.88533 0.55482 9.83333 0.708293 9.83333H1.24996V8.20833C1.24996 7.65763 1.3787 7.1407 1.63617 6.65754C1.89328 6.17473 2.25204 5.78888 2.71246 5.49999C2.25204 5.21111 1.89328 4.82508 1.63617 4.34191C1.3787 3.85911 1.24996 3.34236 1.24996 2.79166V1.16666H0.708293C0.55482 1.16666 0.426084 1.11466 0.322084 1.01066C0.218446 0.907023 0.166626 0.778467 0.166626 0.624995C0.166626 0.471523 0.218446 0.342787 0.322084 0.238787C0.426084 0.135148 0.55482 0.0833282 0.708293 0.0833282H8.29163C8.4451 0.0833282 8.57365 0.135148 8.67729 0.238787C8.78129 0.342787 8.83329 0.471523 8.83329 0.624995C8.83329 0.778467 8.78129 0.907023 8.67729 1.01066C8.57365 1.11466 8.4451 1.16666 8.29163 1.16666H7.74996V2.79166C7.74996 3.34236 7.6214 3.85911 7.36429 4.34191C7.10682 4.82508 6.74788 5.21111 6.28746 5.49999C6.74788 5.78888 7.10682 6.17473 7.36429 6.65754C7.6214 7.1407 7.74996 7.65763 7.74996 8.20833V9.83333H8.29163C8.4451 9.83333 8.57365 9.88533 8.67729 9.98933C8.78129 10.093 8.83329 10.2215 8.83329 10.375C8.83329 10.5285 8.78129 10.657 8.67729 10.7607C8.57365 10.8647 8.4451 10.9167 8.29163 10.9167H0.708293Z" fill="currentColor"/>
+</svg>`
+
+class ProjectTimer extends HTMLElement {
+    constructor() {
+        super();
+
+        this._root = this.attachShadow({mode: 'open'});
+
+        const openingAt = this.getAttribute('openingAt');
+        const closingAt = this.getAttribute('closingAt');
+
+        this.opening = new Date(openingAt.slice(0, openingAt.indexOf('[')));
+        this.closing = new Date(closingAt.slice(0, closingAt.indexOf('[')));
+
+        this.colored = this.getAttribute('colored') === 'true';
+
+        this.render();
+    }
+
+    render() {
+        const now = new Date();
+        const beginString = `<div style="display: flex; align-items: center; gap: 8px">${timerSvg}`;
+        const date = now < this.opening ? this.opening : this.closing;
+
+        const diff = new Date() - date;
+        let result = this.timeSince(date)
+
+        if (diff > 0) {
+            result += ' ago';
+        } else if (date === this.opening) {
+            result = 'In ' + result;
+        } else {
+            result += ' left';
+        }
+
+        this._root.innerHTML = `${beginString}${result}</div>`;
+        if (this.colored) {
+            this.style.color = this.getColor(date);
+        }
+    }
+
+    getColor(date) {
+        const diff = Math.abs(Math.floor((new Date() - date) / 1000));
+
+        let interval = 60 * 60 * 24;
+        if (diff < interval) return '#C93622';
+
+        interval = interval * 7;
+        if (diff < interval) return '#DA8017';
+
+        interval = interval * 2;
+        if (diff < interval) return '#DAC617';
+
+        return '#61BE28';
+
+    }
+
+    timeSince(date) {
+        const diff = new Date() - date;
+        const seconds = Math.abs(Math.floor(diff / 1000));
+        let interval = seconds / 31536000;
+
+        if (interval > 1) return Math.floor(interval) + ` year${interval >= 2 ? 's' : ''}`;
+        interval = seconds / 2592000;
+
+        if (interval > 1) return Math.floor(interval) + ` month${interval >= 2 ? 's' : ''}`;
+        interval = seconds / 86400;
+
+        if (interval > 1) return Math.floor(interval) + ` day${interval >= 2 ? 's' : ''}`;
+        interval = seconds / 3600;
+
+        if (interval > 1) return Math.floor(interval) + ` hour${interval >= 2 ? 's' : ''}`;
+        interval = seconds / 60;
+
+        if (interval > 1) return Math.floor(interval) + ` minute${interval >= 2 ? 's' : ''}`;
+
+        return Math.floor(seconds) + ` second${interval >= 2 ? 's' : ''}`;
+    }
+
+}
+
+const groupSvg = `<svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M3.99959 4.01042C3.55515 4.01042 3.17487 3.85236 2.85876 3.53625C2.54293 3.22042 2.38501 2.84028 2.38501 2.39583C2.38501 1.94444 2.54293 1.5625 2.85876 1.25C3.17487 0.9375 3.55515 0.78125 3.99959 0.78125C4.45098 0.78125 4.83293 0.9375 5.14543 1.25C5.45793 1.5625 5.61418 1.94444 5.61418 2.39583C5.61418 2.84028 5.45793 3.22042 5.14543 3.53625C4.83293 3.85236 4.45098 4.01042 3.99959 4.01042ZM0.76001 7.19792V6.09375C0.76001 5.86458 0.819038 5.65444 0.937093 5.46333C1.05515 5.2725 1.2114 5.12847 1.40584 5.03125C1.82945 4.82292 2.25834 4.66486 2.69251 4.55708C3.1264 4.44958 3.56209 4.39583 3.99959 4.39583C4.44404 4.39583 4.88154 4.44958 5.31209 4.55708C5.74265 4.66486 6.16973 4.82292 6.59334 5.03125C6.79473 5.12847 6.95279 5.2725 7.06751 5.46333C7.18195 5.65444 7.23918 5.86458 7.23918 6.09375V7.19792H0.76001Z" fill="var(--background)"/>
+</svg>`
+
+class GroupSize extends HTMLElement {
+    constructor() {
+        super();
+
+        this._root = this.attachShadow({mode: 'open'});
+
+        const size = parseInt(this.getAttribute('size'));
+
+        let str = `${size === 1 ? 'Solo' : size}<span style="background: var(--primary-text); padding: 4px 4px; border-radius: 50px; display: flex">`;
+        for (let i = 0; i < size; i++) {
+            str += groupSvg;
+        }
+        str += '</span>';
+
+        this._root.innerHTML = `<div style="display: flex; align-items: center; gap: 10px">${str}</div>`;
+    }
+}
+
+class ProgressBar extends HTMLElement {
+    constructor() {
+        super();
+        this._root = this.attachShadow({mode: 'open'});
+
+        let points = parseInt(this.getAttribute('points'));
+        let threshold = parseInt(this.getAttribute('threshold'));
+
+        if (points > threshold) points = threshold;
+
+        let width = threshold !== 0 ? points / threshold * 100 : 100;
+
+        this._root.innerHTML = `<div style="position:relative;">
+<div style="position: absolute; width: 100%; height: 5px; background-color: var(--background); border-radius: 5px"></div>
+<div style="position: absolute; width: ${width}%; height: 5px; background-color: ${this.getColor(width)}; border-radius: 5px"></div>
+</div>`;
+    }
+
+    getColor(value) {
+        if (value === 100) {
+            return '#61BE28';
+        }
+
+        value /= 10;
+
+
+        const min = [201, 54, 34];
+        const max = [218, 198, 23];
+
+
+        let result = '#';
+        for (let i = 0; i < 3; i++) {
+            result += Math.round(min[i] + (max[i] - min[i]) * (value / 10)).toString(16).padStart(2, '0');
+        }
+        return result;
+    }
+}
+
+class TraceSymbol extends HTMLElement {
+    constructor() {
+        super();
+        this._root = this.attachShadow({mode: 'open'});
+
+        let status = this.getAttribute("status");
+        let errorStatus = this.getAttribute("errorStatus");
+        let validated = this.getAttribute("validated") === "true";
+        let successPercent = parseInt(this.getAttribute("successPercent"));
+
+
+        if (status === "IDLE") {
+            this._root.innerHTML = `<svg style="width: 25px; height: 25px" viewBox="0 0 9 11" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M0.708293 10.9167C0.55482 10.9167 0.426084 10.8647 0.322084 10.7607C0.218446 10.657 0.166626 10.5285 0.166626 10.375C0.166626 10.2215 0.218446 10.093 0.322084 9.98933C0.426084 9.88533 0.55482 9.83333 0.708293 9.83333H1.24996V8.20833C1.24996 7.65763 1.3787 7.1407 1.63617 6.65754C1.89328 6.17473 2.25204 5.78888 2.71246 5.49999C2.25204 5.21111 1.89328 4.82508 1.63617 4.34191C1.3787 3.85911 1.24996 3.34236 1.24996 2.79166V1.16666H0.708293C0.55482 1.16666 0.426084 1.11466 0.322084 1.01066C0.218446 0.907023 0.166626 0.778467 0.166626 0.624995C0.166626 0.471523 0.218446 0.342787 0.322084 0.238787C0.426084 0.135148 0.55482 0.0833282 0.708293 0.0833282H8.29163C8.4451 0.0833282 8.57365 0.135148 8.67729 0.238787C8.78129 0.342787 8.83329 0.471523 8.83329 0.624995C8.83329 0.778467 8.78129 0.907023 8.67729 1.01066C8.57365 1.11466 8.4451 1.16666 8.29163 1.16666H7.74996V2.79166C7.74996 3.34236 7.6214 3.85911 7.36429 4.34191C7.10682 4.82508 6.74788 5.21111 6.28746 5.49999C6.74788 5.78888 7.10682 6.17473 7.36429 6.65754C7.6214 7.1407 7.74996 7.65763 7.74996 8.20833V9.83333H8.29163C8.4451 9.83333 8.57365 9.88533 8.67729 9.98933C8.78129 10.093 8.83329 10.2215 8.83329 10.375C8.83329 10.5285 8.78129 10.657 8.67729 10.7607C8.57365 10.8647 8.4451 10.9167 8.29163 10.9167H0.708293Z" fill="currentColor"/>
+</svg>`;
+        } else if (status === "PROCESSING") {
+            this.classList.add("rotating");
+            this._root.innerHTML = `<svg style="width: 25px; height: 25px" width="16" height="22" viewBox="0 0 16 22" fill="none" xmlns="http://www.w3.org/2000/svg"><title>Received</title>
+                <path d="M0.599902 13.575C0.449902 13.1583 0.337569 12.7373 0.262902 12.312C0.187569 11.8873 0.149902 11.4583 0.149902 11.025C0.149902 8.825 0.912569 6.96233 2.4379 5.437C3.96257 3.91233 5.8249 3.15 8.0249 3.15H8.2749L7.3249 2.175C7.14157 2.00833 7.0499 1.79167 7.0499 1.525C7.0499 1.25833 7.14157 1.03333 7.3249 0.850001C7.50824 0.666667 7.72924 0.575001 7.9879 0.575001C8.2459 0.575001 8.46657 0.666667 8.6499 0.850001L11.1999 3.45C11.2999 3.53333 11.3709 3.63333 11.4129 3.75C11.4542 3.86667 11.4749 3.98333 11.4749 4.1C11.4749 4.21667 11.4542 4.329 11.4129 4.437C11.3709 4.54567 11.2999 4.65 11.1999 4.75L8.6499 7.3C8.46657 7.48333 8.2459 7.575 7.9879 7.575C7.72924 7.575 7.50824 7.48333 7.3249 7.3C7.14157 7.11667 7.0499 6.89567 7.0499 6.637C7.0499 6.379 7.14157 6.15833 7.3249 5.975L8.2749 5.025H8.0249C6.35824 5.025 4.94157 5.604 3.7749 6.762C2.60824 7.92067 2.0249 9.34167 2.0249 11.025C2.0249 11.3583 2.05424 11.6833 2.1129 12C2.1709 12.3167 2.25824 12.6333 2.3749 12.95C2.44157 13.1 2.45824 13.2627 2.4249 13.438C2.39157 13.6127 2.31657 13.7583 2.1999 13.875C1.8999 14.1583 1.59157 14.2707 1.2749 14.212C0.958236 14.154 0.733235 13.9417 0.599902 13.575ZM7.3749 21.075L4.7999 18.5C4.71657 18.4 4.65424 18.296 4.6129 18.188C4.5709 18.0793 4.5499 17.9667 4.5499 17.85C4.5499 17.7167 4.5709 17.5957 4.6129 17.487C4.65424 17.379 4.71657 17.2833 4.7999 17.2L7.3749 14.625C7.55824 14.4417 7.77924 14.35 8.0379 14.35C8.2959 14.35 8.51657 14.4417 8.6999 14.625C8.88323 14.8083 8.9749 15.0293 8.9749 15.288C8.9749 15.546 8.88323 15.7667 8.6999 15.95L7.7249 16.925H7.9749C9.65824 16.925 11.0792 16.3417 12.2379 15.175C13.3959 14.0083 13.9749 12.5917 13.9749 10.925C13.9749 10.5917 13.9459 10.2667 13.8879 9.95C13.8292 9.63333 13.7416 9.30833 13.6249 8.975C13.5749 8.825 13.5666 8.66667 13.5999 8.5C13.6332 8.33333 13.7082 8.19167 13.8249 8.075C14.1082 7.775 14.4126 7.65833 14.7379 7.725C15.0626 7.79167 15.2832 8 15.3999 8.35C15.5499 8.76667 15.6626 9.19167 15.7379 9.625C15.8126 10.0583 15.8499 10.4917 15.8499 10.925C15.8499 13.1083 15.0916 14.9667 13.5749 16.5C12.0582 18.0333 10.1916 18.8 7.9749 18.8H7.7249L8.6999 19.75C8.86657 19.9333 8.9499 20.1583 8.9499 20.425C8.9499 20.6917 8.86657 20.9083 8.6999 21.075C8.51657 21.2583 8.2959 21.35 8.0379 21.35C7.77924 21.35 7.55824 21.2583 7.3749 21.075Z"
+                  fill="currentColor"/>
+            </svg>`;
+        } else if (status === "ERROR") {
+            if (errorStatus === "QUOTA_EXCEEDED") {
+                this._root.innerHTML = `<div style="color: ${this.getColor(0)}"><svg <svg style="width: 25px; height: 25px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><title>Quota exceeded</title>
+                <circle cx="256" cy="256" r="208" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="32"/>
+                <path fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="32" d="M108.92 108.92l294.16 294.16"/>
+            </svg></div>`;
+            } else if (errorStatus === "NOT_ACCESSIBLE") {
+                this._root.innerHTML = `<div style="color: ${this.getColor(0)}"><svg style="width: 25px; height: 25px" xmlns="http://www.w3.org/2000/svg" class="ionicon" viewBox="0 0 512 512"><title>Git Pull Request</title>
+<circle cx="128" cy="416" r="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M128 144v224M288 160l-64-64 64-64"/>
+<circle cx="128" cy="96" r="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+<circle cx="384" cy="416" r="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+<path d="M240 96h84a60 60 0 0160 60v212" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+</svg></div>`;
+            } else {
+                this._root.innerHTML = `<div style="color: ${this.getColor(0)}"><svg style="width: 25px; height: 25px" xmlns="http://www.w3.org/2000/svg" class="ionicon" viewBox="0 0 512 512"><title>Failed</title>
+                    <path d="M256 80c-8.66 0-16.58 7.36-16 16l8 216a8 8 0 008 8h0a8 8 0 008-8l8-216c.58-8.64-7.34-16-16-16z" fill="none" stroke="currentColor"
+                          stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+                    <circle cx="256" cy="416" r="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+                </svg></div>`;
+            }
+        } else if (validated) {
+            this._root.innerHTML = `<div style="color: var(--checkmark); margin-top: 2px;"><svg style="width: 20px; height: 20px" width="20" height="16" viewBox="0 0 20 16" fill="none" xmlns="http://www.w3.org/2000/svg"><title>Published</title>
+                            <path d="M2.92432 8.30849C2.45957 7.79801 1.66898 7.76093 1.15849 8.22568C0.648006 8.69043 0.610929 9.48102 1.07568 9.99151L2.92432 8.30849ZM6.54739 14.1449L5.62307 14.9864L5.62307 14.9864L6.54739 14.1449ZM8.0597 14.1063L7.09363 13.313L7.09363 13.3131L8.0597 14.1063ZM18.9661 2.79323C19.4042 2.25968 19.3268 1.47202 18.7932 1.03393C18.2597 0.595843 17.472 0.673227 17.0339 1.20677L18.9661 2.79323ZM1.07568 9.99151L5.62307 14.9864L7.47171 13.3034L2.92432 8.30849L1.07568 9.99151ZM9.02577 14.8995L18.9661 2.79323L17.0339 1.20677L7.09363 13.313L9.02577 14.8995ZM5.62307 14.9864C6.54661 16.0008 8.15521 15.9598 9.02577 14.8995L7.09363 13.3131C7.19036 13.1952 7.36909 13.1907 7.47171 13.3034L5.62307 14.9864Z"
+                                  fill="currentColor"/>
+                    </svg></div>`;
+        } else {
+            this._root.innerHTML = `<div style="color: ${this.getColor(successPercent)}">${successPercent}%</div>`;
+        }
+
+    }
+
+    getColor(value) {
+        if (value === 100) {
+            return '#61BE28';
+        }
+
+        value /= 10;
+
+
+        const min = [201, 54, 34];
+        const max = [218, 198, 23];
+
+
+        let result = '#';
+        for (let i = 0; i < 3; i++) {
+            result += Math.round(min[i] + (max[i] - min[i]) * (value / 10)).toString(16).padStart(2, '0');
+        }
+        return result;
+    }
+}
+
+
+/**
+ * @property {HTMLInputElement} input
+ * @property {SpotlightItem[]} items
+ * @property {SpotlightItem} activeItem
+ * @property {HTMLUListElement} suggestions
+ */
+class Spotlight extends HTMLElement {
+
+
+    constructor() {
+        super();
+        this.shortcutHandler = this.shortcutHandler.bind(this)
+        this.hide = this.hide.bind(this)
+        this.onInput = this.onInput.bind(this)
+        this.inputShortcutHandler = this.inputShortcutHandler.bind(this)
+        this.items = [];
+        this.currentIndex = -1;
+
+        window.fetch('/api/activities', {
+            cache: "no-store"
+        }).then(async (res) => {
+            this.activities = (await res.json())['activities'];
+        })
+    }
+
+    connectedCallback() {
+        this.classList.add('spotlight')
+        this.innerHTML = `
+      <div class="spotlight-bar">
+        <input type="text" placeholder="Search an activity">
+        <ul class="spotlight-suggestions" hidden>
+        </ul>
+      </div>
+    `;
+
+        const spotlightBar = this.querySelector('.spotlight-bar');
+        this.input = this.querySelector('input');
+        this.suggestions = this.querySelector('.spotlight-suggestions')
+
+        document.addEventListener('click', ev => {
+            if (!spotlightBar.contains(ev.target)) {
+                this.hide()
+            }
+        });
+
+        window.addEventListener('keydown', this.shortcutHandler);
+        this.input.addEventListener('input', this.onInput);
+        this.input.addEventListener('keydown', this.inputShortcutHandler);
+    }
+
+    disconnectedCallback() {
+        window.removeEventListener('keydown', this.shortcutHandler);
+    }
+
+    shortcutHandler(e) {
+        if (e.key === 'k' && this.shortcutKey(e)) {
+            e.preventDefault()
+            this.classList.add('active')
+            this.input.value = ''
+            this.onInput()
+            this.input.focus()
+        }
+    }
+
+    shortcutKey(e) {
+        if (navigator.platform.includes('Mac')) {
+            return e.metaKey;
+        }
+
+        return e.ctrlKey;
+    }
+
+    hide() {
+        this.classList.remove('active')
+    }
+
+    onInput() {
+        const search = this.input.value.trim()
+
+        if (search === '') {
+            this.items = [];
+            this.suggestions.setAttribute('hidden', 'hidden');
+            return;
+        }
+
+        // Firstly, get data & reset content
+        const matchingActivities = this.activities.filter(activity => activity.name.toLowerCase().includes(search.toLowerCase()))
+        this.suggestions.innerHTML = '';
+        this.items = [];
+        this.currentIndex = -1;
+
+        if (matchingActivities.length === 0) {
+            this.suggestions.setAttribute('hidden', 'hidden');
+        } else {
+            this.suggestions.removeAttribute('hidden');
+            this.suggestions.innerHTML = '';
+            for (let i = 0; i < matchingActivities.length; i++) {
+                const item = new SpotlightItem(matchingActivities[i].name, matchingActivities[i].href);
+                this.items.push(item);
+                this.suggestions.appendChild(item.element);
+            }
+        }
+    }
+
+    setActiveIndex(n) {
+        if (n >= this.items.length) {
+            n = 0
+        }
+        if (n < 0) {
+            n = this.items.length - 1
+        }
+
+        if (this.currentIndex !== -1)
+            this.items[this.currentIndex].unselect();
+
+        this.items[n].select()
+        this.currentIndex = n;
+    }
+
+    /**
+     * @param {KeyboardEvent} e
+     */
+    inputShortcutHandler(e) {
+        if (e.key === 'Escape') {
+            this.hide()
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault()
+            this.setActiveIndex(this.currentIndex + 1);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            this.setActiveIndex(this.currentIndex - 1);
+        } else if (e.key === 'Enter') {
+            if (this.currentIndex !== -1)
+                this.items[this.currentIndex].follow();
+        }
+    }
+}
+
+/**
+ * @property {HTMLLIElement} element
+ * @property {string} title
+ * @property {string} href
+ */
+class SpotlightItem {
+    /**
+     * @param {string} title
+     * @param {string} href
+     */
+    constructor(title, href) {
+        const li = document.createElement('li')
+        const a = document.createElement('a')
+        a.setAttribute('href', href)
+        a.innerText = title
+        li.appendChild(a)
+        this.element = li
+        this.title = title
+        this.href = href
+    }
+
+
+    hide() {
+        this.element.setAttribute('hidden', 'hidden')
+    }
+
+    select() {
+        this.element.classList.add('active')
+    }
+
+    unselect() {
+        this.element.classList.remove('active')
+    }
+
+    follow() {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('login') !== null) this.href += `?login=${params.get('login')}`
+        window.location.href = this.href
+    }
+}
+
+
+class MarkdownViewer extends HTMLElement {
+    constructor() {
+        super();
+
+        this._root = this.attachShadow({mode: 'open'});
+        this.content = this.getAttribute('content');
+    }
+
+    connectedCallback() {
+        const converter = new showdown.Converter();
+        const normalizedContent = this.content.replaceAll('\\n', '\n')
+        const html = converter.makeHtml(normalizedContent); // TODO should be fixed
+        const normalizedHtml = html.replaceAll('h1', 'h4')
+            .replaceAll('h2', 'h5')
+            .replaceAll('h3', 'h6')
+        this._root.innerHTML = normalizedHtml;
+    }
+}
+
+window.customElements.define('subject-loader', SubjectLoader);
+window.customElements.define('project-timer', ProjectTimer);
+window.customElements.define('group-size', GroupSize);
+window.customElements.define('progress-bar', ProgressBar);
+window.customElements.define('trace-symbol', TraceSymbol);
+window.customElements.define('spotlight-bar', Spotlight)
+window.customElements.define('markdown-viewer', MarkdownViewer)
+
+window.addEventListener("pageshow", function (event) {
+    const historyTraversal = event.persisted || (typeof window.performance != "undefined" && window.performance.navigation.type === 2);
+    if (historyTraversal) {
+        window.location.reload();
+    }
+});
+
+// Manage mobile
+window.addEventListener('resize', onResize);
+
+function onResize() {
+    if (window.innerWidth < 500) {
+        document.querySelector("body").style.height = `${window.innerHeight}px`;
+        document.querySelector("main").style.height = `${window.innerHeight - 76}px`;
+    }
+}
+
+onResize();
+
+mermaid.initialize({startOnLoad: true, theme: 'dark', maxTextSize: 500000})
+
+function initGraph() {
+    const graph = document.querySelector("#graph");
+
+    if (graph === null) return;
+
+    if (graph.dataset['processed'] !== "true") {
+        setTimeout(initGraph, 50);
+        return;
+    }
+
+    const params = new Proxy(new URLSearchParams(window.location.search), {
+        get: (searchParams, prop) => searchParams.get(prop),
+    });
+    const impersonate = params.login !== null ? `?login=${params.login}` : ""
+
+    document.querySelectorAll(".statediagram-state").forEach(el => {
+
+        const resource = el.id.split('\"')[1].replaceAll("~", '-');
+        const nodeRequired = resource.split("/")[0].slice("_required=".length) === "true";
+        const nodeValidated = resource.split("/")[1].slice("_validated=".length) === "true";
+        const nodeAccessible = resource.split("/")[2].slice("_accessible=".length) === "true";
+
+        if (nodeRequired) {
+            for (let child of el.children) {
+                if (child.tagName === 'rect') {
+                    child.style.stroke = 'var(--required)';
+                    child.style.strokeWidth = '2px';
+                }
+            }
+        }
+
+        if (nodeRequired && nodeValidated) {
+            for (let child of el.children) {
+                if (child.tagName === 'rect') {
+                    child.style.stroke = 'var(--required-validated)';
+                    child.style.strokeWidth = '2px';
+                    child.style.fill = 'var(--required-validated)';
+                }
+            }
+        } else if (nodeValidated) {
+            for (let child of el.children) {
+                if (child.tagName === 'rect') {
+                    child.style.stroke = 'var(--trivial)';
+                    child.style.strokeWidth = '2px';
+                    child.style.fill = 'var(--trivial)';
+                }
+            }
+        }
+
+        const resourcePath = nodeAccessible ?
+            "href=\"/" + resource.split("/").slice(3).join("/") + impersonate + "\"" :
+            `style="cursor: not-allowed; opacity: 0.3;"`;
+
+        el.innerHTML = `<a ${resourcePath}>${el.innerHTML}</a>`;
+    });
+
+}
+
+setTimeout(initGraph, 50);
+
+function addGraphController() {
+    const svg = document.querySelector('.statediagram');
+
+    if (document.location.pathname.split("/").length <= 2) return;
+
+    if (svg === null) {
+        setTimeout(addGraphController, 100);
+        return;
+    }
+
+    svg.setAttribute('height', Math.max(svg.clientHeight, 200) + 'px')
+    svg.style.maxWidth = null
+
+    svgPanZoom('.statediagram', {
+        panEnabled: true
+        , controlIconsEnabled: true
+        , zoomEnabled: true
+        , dblClickZoomEnabled: true
+        , mouseWheelZoomEnabled: true
+        , preventMouseEventsDefault: false
+        , zoomScaleSensitivity: 0.2
+        , minZoom: 0.5
+        , maxZoom: 10
+        , fit: true
+        , contain: true
+        , center: true
+        , refreshRate: 'auto'
+    });
+}
+
+setTimeout(addGraphController, 100);
+”ò¿Ÿ:  9         ÿeÕB      getSandboxIframe   ·7ªµ      iframe     ∏OÄ      document   DC      createElement      A–Ïö      sandbox    ˝b)}      allow-same-origin      <>      allow-popups   •%j3      allow-scripts      πÛp·      border	     ,Ω      none
+   ÎƒJ˚      width      ª?y      100%   ∑…≈      height     *‰®ú      60vh   fKëW      getCssLinkFor      ":k      path   ¸IÎ’      link   ¨Êí‹      rel    ÏÆIl
+      stylesheet     H	¥†      text/css   ª©`X      href   ËIkí	      getCookie      ^*V∏      ;      _YNx      cookie     !”T˜      parts      ¶i4      pop    Ç=äO      shift      [rÕ      ClassWatcher   TåC
+      targetNode     =⁄À      classToWatch   W∆eˆ      classAddedCallback     ÷ú~^      classRemovedCallback    ˛Uyh      observer!   ÿeæ’      lastClassState"      Ÿ∂z	      classList#      µœê^      contains$   íu`      init%   ]Q°(      MutationObserver&   ¬æ∫Ç      mutationCallback'   dÏ„      observe(    „å5∆
+      attributes)     ˝õ†
+      disconnect*     Å¯ë      mutationsList+      ±tÿ      mutation,   ôòn      attributeName-      KùÅı      currentClassState.      πî,      SubjectLoader/      ˜*ıq      HTMLElement0    ˝ˆi      _root1      Ïàcâ      attachShadow2   ∏Íˆ      mode3   óx5      open4   ∞ôw√      domain5     ¯2áâ      window6     0+QA      location7   s4Í      protocol8   ﬁ†∫™      //9     	ﬁ(r      host:   ëap&      basePath;   4>ÙE      getAttribute<   c«‰!
+      tenantSlug=     –®4O      pathname>   ¯$≠,      fetch?      ª:0      res@    Q√:	      innerHTMLA      ªßøO      <div class="subject" style="font-size: 0.8em">Failed to load the document</div>B    ‘„X      htmlC   à3¿µ      textD   ⁄Eú¡      indexOfE    ◊ÌH¶      <htmlF      ú∑»õ      srcG    áƒ{p      onloadH      K{      contentDocumentI    ∑7Ma      headJ   ≠$~      appendChildK    Ñ…Ú      /assets/css/style.cssL      STY      /assets/css/subject.cssM    œ›û¡      /cssN   <7B      baseO   9“◊^      _blankP     òh;      bodyQ   ¢rÿ      themeR      îv⁄4      darkS   °⁄Ê      sandbox-embeddedT   *N∑∆      removeU     "q˚D      lightV      ‚"„‡      timerSvgW   t-Y§     <svg width="9" height="11" viewBox="0 0 9 11" fill="none" xmlns="http://www.w3.org/2000/svg" style="height: 12px; width: 12px;">
+<path d="M0.708293 10.9167C0.55482 10.9167 0.426084 10.8647 0.322084 10.7607C0.218446 10.657 0.166626 10.5285 0.166626 10.375C0.166626 10.2215 0.218446 10.093 0.322084 9.98933C0.426084 9.88533 0.55482 9.83333 0.708293 9.83333H1.24996V8.20833C1.24996 7.65763 1.3787 7.1407 1.63617 6.65754C1.89328 6.17473 2.25204 5.78888 2.71246 5.49999C2.25204 5.21111 1.89328 4.82508 1.63617 4.34191C1.3787 3.85911 1.24996 3.34236 1.24996 2.79166V1.16666H0.708293C0.55482 1.16666 0.426084 1.11466 0.322084 1.01066C0.218446 0.907023 0.166626 0.778467 0.166626 0.624995C0.166626 0.471523 0.218446 0.342787 0.322084 0.238787C0.426084 0.135148 0.55482 0.0833282 0.708293 0.0833282H8.29163C8.4451 0.0833282 8.57365 0.135148 8.67729 0.238787C8.78129 0.342787 8.83329 0.471523 8.83329 0.624995C8.83329 0.778467 8.78129 0.907023 8.67729 1.01066C8.57365 1.11466 8.4451 1.16666 8.29163 1.16666H7.74996V2.79166C7.74996 3.34236 7.6214 3.85911 7.36429 4.34191C7.10682 4.82508 6.74788 5.21111 6.28746 5.49999C6.74788 5.78888 7.10682 6.17473 7.36429 6.65754C7.6214 7.1407 7.74996 7.65763 7.74996 8.20833V9.83333H8.29163C8.4451 9.83333 8.57365 9.88533 8.67729 9.98933C8.78129 10.093 8.83329 10.2215 8.83329 10.375C8.83329 10.5285 8.78129 10.657 8.67729 10.7607C8.57365 10.8647 8.4451 10.9167 8.29163 10.9167H0.708293Z" fill="currentColor"/>
+</svg>X   …P™Q      ProjectTimerY   ûcF	      openingAtZ      Æ®\ˆ	      closingAt[      £=l1      opening\    ÿÖ Ã      slice]      ËY      closing^    Úfà      colored_    ‘ÍÕ˜      render`     *π      nowa    ¬y’œ      beginStringb    LÓ¢W:      <div style="display: flex; align-items: center; gap: 8px">c     8§Bë      diffd   ˙˝»*	      timeSincee      ÷Ëdò       agof   …Â£      In g    ›
+Ì–       lefth      ©è^      </div>i     Ï
+ó      colorj      Œ˘      getColork   ˛ .      absl    `-Ñó      floorm      szÇﬁ      intervaln   D÷ˇb      #C93622o    $˙è      #DA8017p    ≤18      #DAC617q    g⁄é      #61BE28r    Óh       years      …ò8L       montht     £Gƒπ       dayu   ˜Ä≈z       hourv      G¬_N       minutew    (GX¥       secondx     ]Ü      groupSvgy   ï^“∂     <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M3.99959 4.01042C3.55515 4.01042 3.17487 3.85236 2.85876 3.53625C2.54293 3.22042 2.38501 2.84028 2.38501 2.39583C2.38501 1.94444 2.54293 1.5625 2.85876 1.25C3.17487 0.9375 3.55515 0.78125 3.99959 0.78125C4.45098 0.78125 4.83293 0.9375 5.14543 1.25C5.45793 1.5625 5.61418 1.94444 5.61418 2.39583C5.61418 2.84028 5.45793 3.22042 5.14543 3.53625C4.83293 3.85236 4.45098 4.01042 3.99959 4.01042ZM0.76001 7.19792V6.09375C0.76001 5.86458 0.819038 5.65444 0.937093 5.46333C1.05515 5.2725 1.2114 5.12847 1.40584 5.03125C1.82945 4.82292 2.25834 4.66486 2.69251 4.55708C3.1264 4.44958 3.56209 4.39583 3.99959 4.39583C4.44404 4.39583 4.88154 4.44958 5.31209 4.55708C5.74265 4.66486 6.16973 4.82292 6.59334 5.03125C6.79473 5.12847 6.95279 5.2725 7.06751 5.46333C7.18195 5.65444 7.23918 5.86458 7.23918 6.09375V7.19792H0.76001Z" fill="var(--background)"/>
+</svg>z     ˙@U+	      GroupSize{      Ñ6¶1      str|    À ß      Solo}   mÅ™d      <span style="background: var(--primary-text); padding: 4px 4px; border-radius: 50px; display: flex">~   ŸÂ°      </span>    ßVån;      <div style="display: flex; align-items: center; gap: 10px">Ä    ı¥rÇ      ProgressBarÅ    Wﬂ+k      pointsÇ     z)÷	      thresholdÉ      èeXh¬      <div style="position:relative;">
+<div style="position: absolute; width: 100%; height: 5px; background-color: var(--background); border-radius: 5px"></div>
+<div style="position: absolute; width: Ñ     [Îk"      %; height: 5px; background-color: Ö     Ø`S«#      ; border-radius: 5px"></div>
+</div>Ü    €U ≥      miná    Kk.      maxà    &9!Ï      roundâ      nõ$      padStartä   †áS^      TraceSymbolã    à`Y¡      errorStatuså    ﬁôA/	      validatedç      æô©      successPercenté     ìs€      IDLEè   ∆‡öç     <svg style="width: 25px; height: 25px" viewBox="0 0 9 11" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M0.708293 10.9167C0.55482 10.9167 0.426084 10.8647 0.322084 10.7607C0.218446 10.657 0.166626 10.5285 0.166626 10.375C0.166626 10.2215 0.218446 10.093 0.322084 9.98933C0.426084 9.88533 0.55482 9.83333 0.708293 9.83333H1.24996V8.20833C1.24996 7.65763 1.3787 7.1407 1.63617 6.65754C1.89328 6.17473 2.25204 5.78888 2.71246 5.49999C2.25204 5.21111 1.89328 4.82508 1.63617 4.34191C1.3787 3.85911 1.24996 3.34236 1.24996 2.79166V1.16666H0.708293C0.55482 1.16666 0.426084 1.11466 0.322084 1.01066C0.218446 0.907023 0.166626 0.778467 0.166626 0.624995C0.166626 0.471523 0.218446 0.342787 0.322084 0.238787C0.426084 0.135148 0.55482 0.0833282 0.708293 0.0833282H8.29163C8.4451 0.0833282 8.57365 0.135148 8.67729 0.238787C8.78129 0.342787 8.83329 0.471523 8.83329 0.624995C8.83329 0.778467 8.78129 0.907023 8.67729 1.01066C8.57365 1.11466 8.4451 1.16666 8.29163 1.16666H7.74996V2.79166C7.74996 3.34236 7.6214 3.85911 7.36429 4.34191C7.10682 4.82508 6.74788 5.21111 6.28746 5.49999C6.74788 5.78888 7.10682 6.17473 7.36429 6.65754C7.6214 7.1407 7.74996 7.65763 7.74996 8.20833V9.83333H8.29163C8.4451 9.83333 8.57365 9.88533 8.67729 9.98933C8.78129 10.093 8.83329 10.2215 8.83329 10.375C8.83329 10.5285 8.78129 10.657 8.67729 10.7607C8.57365 10.8647 8.4451 10.9167 8.29163 10.9167H0.708293Z" fill="currentColor"/>
+</svg>ê      µ∞·Ö
+      PROCESSINGë     uH;J      rotatingí   iÁ@i‚	     <svg style="width: 25px; height: 25px" width="16" height="22" viewBox="0 0 16 22" fill="none" xmlns="http://www.w3.org/2000/svg"><title>Received</title>
+                <path d="M0.599902 13.575C0.449902 13.1583 0.337569 12.7373 0.262902 12.312C0.187569 11.8873 0.149902 11.4583 0.149902 11.025C0.149902 8.825 0.912569 6.96233 2.4379 5.437C3.96257 3.91233 5.8249 3.15 8.0249 3.15H8.2749L7.3249 2.175C7.14157 2.00833 7.0499 1.79167 7.0499 1.525C7.0499 1.25833 7.14157 1.03333 7.3249 0.850001C7.50824 0.666667 7.72924 0.575001 7.9879 0.575001C8.2459 0.575001 8.46657 0.666667 8.6499 0.850001L11.1999 3.45C11.2999 3.53333 11.3709 3.63333 11.4129 3.75C11.4542 3.86667 11.4749 3.98333 11.4749 4.1C11.4749 4.21667 11.4542 4.329 11.4129 4.437C11.3709 4.54567 11.2999 4.65 11.1999 4.75L8.6499 7.3C8.46657 7.48333 8.2459 7.575 7.9879 7.575C7.72924 7.575 7.50824 7.48333 7.3249 7.3C7.14157 7.11667 7.0499 6.89567 7.0499 6.637C7.0499 6.379 7.14157 6.15833 7.3249 5.975L8.2749 5.025H8.0249C6.35824 5.025 4.94157 5.604 3.7749 6.762C2.60824 7.92067 2.0249 9.34167 2.0249 11.025C2.0249 11.3583 2.05424 11.6833 2.1129 12C2.1709 12.3167 2.25824 12.6333 2.3749 12.95C2.44157 13.1 2.45824 13.2627 2.4249 13.438C2.39157 13.6127 2.31657 13.7583 2.1999 13.875C1.8999 14.1583 1.59157 14.2707 1.2749 14.212C0.958236 14.154 0.733235 13.9417 0.599902 13.575ZM7.3749 21.075L4.7999 18.5C4.71657 18.4 4.65424 18.296 4.6129 18.188C4.5709 18.0793 4.5499 17.9667 4.5499 17.85C4.5499 17.7167 4.5709 17.5957 4.6129 17.487C4.65424 17.379 4.71657 17.2833 4.7999 17.2L7.3749 14.625C7.55824 14.4417 7.77924 14.35 8.0379 14.35C8.2959 14.35 8.51657 14.4417 8.6999 14.625C8.88323 14.8083 8.9749 15.0293 8.9749 15.288C8.9749 15.546 8.88323 15.7667 8.6999 15.95L7.7249 16.925H7.9749C9.65824 16.925 11.0792 16.3417 12.2379 15.175C13.3959 14.0083 13.9749 12.5917 13.9749 10.925C13.9749 10.5917 13.9459 10.2667 13.8879 9.95C13.8292 9.63333 13.7416 9.30833 13.6249 8.975C13.5749 8.825 13.5666 8.66667 13.5999 8.5C13.6332 8.33333 13.7082 8.19167 13.8249 8.075C14.1082 7.775 14.4126 7.65833 14.7379 7.725C15.0626 7.79167 15.2832 8 15.3999 8.35C15.5499 8.76667 15.6626 9.19167 15.7379 9.625C15.8126 10.0583 15.8499 10.4917 15.8499 10.925C15.8499 13.1083 15.0916 14.9667 13.5749 16.5C12.0582 18.0333 10.1916 18.8 7.9749 18.8H7.7249L8.6999 19.75C8.86657 19.9333 8.9499 20.1583 8.9499 20.425C8.9499 20.6917 8.86657 20.9083 8.6999 21.075C8.51657 21.2583 8.2959 21.35 8.0379 21.35C7.77924 21.35 7.55824 21.2583 7.3749 21.075Z"
+                  fill="currentColor"/>
+            </svg>ì     û˘çp      ERRORî      ûˇ±Ë      QUOTA_EXCEEDEDï     '>?      <div style="color: ñ    Â=†     "><svg <svg style="width: 25px; height: 25px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><title>Quota exceeded</title>
+                <circle cx="256" cy="256" r="208" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="32"/>
+                <path fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="32" d="M108.92 108.92l294.16 294.16"/>
+            </svg></div>ó   ?      NOT_ACCESSIBLEò     +´N     "><svg style="width: 25px; height: 25px" xmlns="http://www.w3.org/2000/svg" class="ionicon" viewBox="0 0 512 512"><title>Git Pull Request</title>
+<circle cx="128" cy="416" r="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M128 144v224M288 160l-64-64 64-64"/>
+<circle cx="128" cy="96" r="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+<circle cx="384" cy="416" r="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+<path d="M240 96h84a60 60 0 0160 60v212" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+</svg></div>ô     7≠r˘:     "><svg style="width: 25px; height: 25px" xmlns="http://www.w3.org/2000/svg" class="ionicon" viewBox="0 0 512 512"><title>Failed</title>
+                    <path d="M256 80c-8.66 0-16.58 7.36-16 16l8 216a8 8 0 008 8h0a8 8 0 008-8l8-216c.58-8.64-7.34-16-16-16z" fill="none" stroke="currentColor"
+                          stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+                    <circle cx="256" cy="416" r="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+                </svg></div>ö     ªiﬂ:     <div style="color: var(--checkmark); margin-top: 2px;"><svg style="width: 20px; height: 20px" width="20" height="16" viewBox="0 0 20 16" fill="none" xmlns="http://www.w3.org/2000/svg"><title>Published</title>
+                            <path d="M2.92432 8.30849C2.45957 7.79801 1.66898 7.76093 1.15849 8.22568C0.648006 8.69043 0.610929 9.48102 1.07568 9.99151L2.92432 8.30849ZM6.54739 14.1449L5.62307 14.9864L5.62307 14.9864L6.54739 14.1449ZM8.0597 14.1063L7.09363 13.313L7.09363 13.3131L8.0597 14.1063ZM18.9661 2.79323C19.4042 2.25968 19.3268 1.47202 18.7932 1.03393C18.2597 0.595843 17.472 0.673227 17.0339 1.20677L18.9661 2.79323ZM1.07568 9.99151L5.62307 14.9864L7.47171 13.3034L2.92432 8.30849L1.07568 9.99151ZM9.02577 14.8995L18.9661 2.79323L17.0339 1.20677L7.09363 13.313L9.02577 14.8995ZM5.62307 14.9864C6.54661 16.0008 8.15521 15.9598 9.02577 14.8995L7.09363 13.3131C7.19036 13.1952 7.36909 13.1907 7.47171 13.3034L5.62307 14.9864Z"
+                                  fill="currentColor"/>
+                    </svg></div>õ     +®¢      ">ú     >Õ›%      %</div>ù    ßt>B	      Spotlightû      uQÚ      shortcutHandlerü    ‡Õ      bind†   üvÙ}      hide°   Ëﬂœ      onInput¢    ß`õç      inputShortcutHandler£   §#`      items§      3ºÖz      currentIndex•   gΩ∫      /api/activities¶    
+É€,      cacheß      	6+Ú      no-store®   ˘π
+      activities©     ıñ      connectedCallback™      ﬁf	      spotlight´      º?Qö±      
+      <div class="spotlight-bar">
+        <input type="text" placeholder="Search an activity">
+        <ul class="spotlight-suggestions" hidden>
+        </ul>
+      </div>
+    ¨      ˘      spotlightBar≠   ÿ1:Ú      querySelectorÆ      8ûöU      .spotlight-barØ     õuÅπ      suggestions∞    !HÎˆ      .spotlight-suggestions±      rO      addEventListener≤   ü™‚X      click≥      ù∫”      keydown¥    ôv*]      disconnectedCallbackµ   ]¸ç      removeEventListener∂    B¸ø;      key∑    9ª|t      shortcutKey∏    B9∫¿      preventDefaultπ     å®Px      active∫     KÃÌ      focusª      π„+	      navigatorº      KƒÄ      platformΩ   ıÄ0      Macæ    `$ü˝      metaKeyø    
+@•&      ctrlKey¿    óñôb      trim¡   ó{⁄D      setAttribute¬   Ñ€ËW      hidden√     *¨ë      matchingActivitiesƒ     >	≈      filter≈     	IB      activity∆   RâDo      toLowerCase«    $Gà†      removeAttribute»    ˝ÑÃ∫      item…   âÿKq      SpotlightItem       Ñu2      pushÀ   'jL      setActiveIndexÃ     -kñT      unselectÕ   1<Î      selectŒ     ¨Ê£J      Escapeœ     )“é	      ArrowDown–      ÁQ‘      ArrowUp—    Ï~o^      Enter“      V)}ˆ      follow”     “E      title‘      ≠	év	      innerText’      ÀÀ&<      params÷     ¥≠y^      URLSearchParams◊    ‹üUf      loginÿ      KÔ·-      ?login=Ÿ    M<Œ§      MarkdownViewer⁄     4W»      content€    Ï¯ùÈ	      converter‹      k >R      showdown›   6à4ˇ	      Converterﬁ      Õ¡Èö      normalizedContentﬂ      é
+      replaceAll‡           \n·     <ì∞      makeHtml‚   c™      normalizedHtml„     p≤}      customElements‰     ˝Ìu      defineÂ     ó"õ      subject-loaderÊ     µ‘D      project-timerÁ      %^J¨
+      group-sizeË     ‹˛»m      progress-barÈ   è¸u=      trace-symbolÍ   ¬8	Î      spotlight-barÎ      ’£F≤      markdown-viewerÏ    Ë}2      pageshowÌ   II∑P      eventÓ      ØÔ-      historyTraversalÔ   ƒ6∫	      persisted      »ÿﬁ&      performanceÒ    th
+      navigationÚ     MΩT      reloadÛ     ?/$_      resizeÙ     Ë"L€      onResizeı   Uü
+      innerWidthˆ     0Uó      innerHeight˜     ª2       main¯   « ±o      mermaid˘    
+à·X
+      initialize˙     ÚjD¥      startOnLoad˚    ØÃd]      maxTextSize¸    TŒj˛	      initGraph˝      @—	      graph˛      ™ìΩÊ      #graphˇ     ^]ò      dataset    ë‚$$	      processed     3AtŸ
+      setTimeout    LÛã‘      searchParams  “P…ù      prop  ›z      impersonate   #•ç      querySelectorAll  D%¢      .statediagram-state   ¯75      resource  =¡ƒe      nodeRequired	  Aóﬁ
+      _required=
+    JPÔ˛      nodeValidated     Àsi      _validated=   Êoœj      nodeAccessible    /ãV3      _accessible=  Qj^      child     
+}N      children  ﬁﬁÿ      tagName   ıF∆Q      rect  ËÏ 7      stroke    ˙9      var(--required)   Ì^ÀZ      strokeWidth   ˛Åñ      2px   ß∏ 5      var(--required-validated)     '¡œ      var(--trivial)    
+˘∆      resourcePath  ë∏Gz      href="/   •Œ>      join  WLë*      style="cursor: not-allowed; opacity: 0.3;"    ^«˛      <a    ÓÜƒé      </a>  ˛w§¢      addGraphController    aáﬁå      svg    u≤…      .statediagram!     À˙∏      clientHeight"  ã; x      maxWidth#  â„-
+      svgPanZoom$    Æ¶Æ
+      panEnabled%    Ëw˜      controlIconsEnabled&   ÕkL      zoomEnabled'   ¿4Z.      dblClickZoomEnabled(   Ç„%      mouseWheelZoomEnabled)     r±≠w      preventMouseEventsDefault*     ÊèÛß      zoomScaleSensitivity+  WvÀ≠      minZoom,   
+‡      maxZoom-   ˇŸ≠í      fit.   ù v      contain/   rLtö      center0    DFÁ∞      refreshRate1   z¡≤S      auto2  ˝„•      SubjectLoader/<3   ‡„‡      SubjectLoader/</iframe.onload4     zor±      SubjectLoader/</<5     ¶3
+      Spotlight/<6   Á7c“      connectedCallback/<7   OûâW      onInput/matchingActivities<9   \˝>      initGraph/<     1   À  ]   1              Ô%,â                                                                                                                                           ,                  -                      	           .      	           /                                                                                   0                                                                                   	                                                                                                                                       
+                                                                       !                                                                       %                 &                %                 (                %                 *                 %                 ,                                   .                 /                0                                  2                 3                2                 5                 6                                  8                 9                8                 ;                 <                                  >                ?                >                A                B                 >                 >                 >                 >                 >                  H               I           !      I                K                >           "      >           #                        O           $      P                O           %      O           &      O           '      O           (      U                                  W           )      W           *      Y                            +      [                 ≥Oåc            ê  ê  êÙ  ê¸  ê ê  .  X  z  Ä  ä  ù  …  Ÿ  V  x                                                                            7               Ù                                                 ˝  ’   P                            ï                
+                                                                                                   n  `               s  `             *              +              -                      s                 s                 s                 s                .                s  `o                4  :  P<  P             ?  Pm  `             B  P  P                             N                                               X                s   o                Y  Z                s               ë  `  a  J   c               J               m  c               J               m  c  ú               z                s   o               {  ¨              i               Ä                s   o               Å  Ç  
+               Ù              ë  Ü  á              i               ä                s   o               ∂  ã  å  ç               Ù              ë  Ü  á              i               ù                s  `o                ?  Pm  `               s  `              ¨  P             ü               s               e  s                e                s                 s                Ç `√               ≈              i               »              n  s               e  s                …              ”    s                R a                s                 s                 s                 s                ’               Ÿ                s   o                 s                €  ﬁ  B  ‚               Ì               Ó  Ø¬0∞IÙ$KEÆ˙ö         ®      A     $ % & ' ( ) * + , - . / 0         (          2          2          2          2          2          ¶          2          ˙  Q  R  ˚   °  Ä¯ˇá&’™ç!´!1   Ù   “ú¯mT  ÿ               ¶       ﬂ   ≥¥   ‰:”   j   o	   k    ∂   ‰o
+   ‘ÈÁ@   ?   o   ?   o   ?   o   ?   ‰¥   ’µ   ‰≥¥   ‰æ   rÊú   ô   ÊL   õ   ô   ‰tô   =Ès   ÈÁ@   ?   ‰¥   ’µ   ‰   µ   ‰≥¥   ‰æ   rÊú   ô   ÊL   õ   ô   ‰tô   =Ès   ÈÁ@   ?   o   ?   o   ?   o    ?!   ‰¥   ’µ"   ‰$   µ#   ‰≥¥   ‰æ   rÊú   ô(   ÊL   õ   ô)   ‰tô*   =Ès&   ÈÁ@   ?   ‰¥   ’µ'   ‰≥¥   ‰æ   rÊú   ô0   ÊL   õ   ô1   ‰tô2   =Ès)   ÈÁ@   ?   o*   ?   ‰¥   ’µ+   ‰≥¥   ‰æ   rÊú   ô:   ÊL   õ   ô;   ‰tô<   =Ès-   ÈÁ@   ?   o.   ?   ‰¥   ’µ/   ‰≥¥   ‰æ   rÊú   ôD   ÊL   õ   ôE   ‰tôF   =Ès1   ÈÁ@   ?   o2   ?3   o4   ?5   o6   ?7   o8   ?9   o:   ?;   o<   ?=   o>   ??   o@   ?A   ‰¥   ’µB   ‰≥¥   ‰: oD   ÈÁ@   ?   oE   ?;   oF   ?G   oH   ?I   oJ   ?K   ‰¥   ’µL   ‰≥¥   ‰æ   rÊú   ôi   ÊL   õ   ôj   ‰tôk   =ÈsN   ÈÁ@   ?   oO   ?3   ‰¥   ’µP   ‰æQ   LR   ÊLS   ÈT   æ   y ‰æQ   LR   ÊLS   ÈU   æ"   y ‰æQ   LR   ÊLS   ÈV   æ'   y ‰æQ   LR   ÊLS   ÈW   æ+   y ‰æQ   LR   ÊLS   ÈX   æ/   y ‰æQ   LR   ÊLS   ÈY   æB   y ‰æQ   LR   ÊLS   ÈZ   æP   y ‰æQ   ÊL[   È\   o]   y ‰æQ   ÊL[   È^   æ_   y ‰æ_    y  ‰æ`   ÊLa   È<b   y ‰æc    æd   2y ‰æc    æe   dy ‰ß5¥@(J-J1ñ0FfÀ@Ä  Å`fø@Ä  ñJÄ  ¨JÄ  ºñ@Ä  ‘`fÀ0Ä  Ífø@Ä  ¸ñ0Ä fø@Ä Eñ0Ä `fø@Ä sJÄ å JÄ öJÄ ¢ JÄ ¬JÄ ‘ñ0Ä Èô@Ä ˙   ñ0Ä fø@Ä ñ0Ä !`ñ /ˇˇˇÁP`ñ .ˇˇˇËP`ñ +ˇˇˇÎP`ñ -ˇˇˇÈP`ñ -ˇˇˇÈP`ñ .ˇˇˇËP`ñ 0ˇˇˇÊP`ë $ˇˇˇ„P4Ä 1`ë "ˇˇˇÂP4Ä :``ˇˇˇıP4Ä x`ˇˇˇˇP4Ä ò`ˇˇˇˇPPÄÄÙ        X   ˇˇˇˇ                c   K   ˇˇˇˇ   ø   i   ˇˇˇˇ%   9  K   ˇˇˇˇ(   ä  U   ˇˇˇˇ,   Â  U   ˇˇˇˇ0   @  õ   ˇˇˇˇC   ·  G   ˇˇˇˇM   .  U   ˇˇˇˇ   ë©È–   á                        ≥¥   ‰æ   ÊL   È   u ¥   ‰¡   L   ÊL   È      	   y ‰¡   L
+      N   ‰¡   L
+      N   ‰¡   L
+      N   ‰¡   ¶’ß’ß &`ë 	PH`ü P$`î `î `î@`TÄ          Ü   ˇˇˇˇ    Ñ          ¥   hëÇî   S                       ≥¥   ‰æ   ÊL   È   u ¥   ‰¡      N   ‰¡      N   ‰¡   ø  N	   ‰¡   ¶’ß’ß &`ë 	PH`/`/`M`TÄÄÄ¥          R   ˇˇˇˇ    P          ¯   áÖUºÿ   ä                       ≥¥   ¥  ‰   æ   L   3(¥   ‰¡   ÊL   È   ø  3(   (u ¥  ‰¡  L   ú4   ô	   ¡  ÊL   Èu  ÊL   È	   u ÊL
+   Èu  ¶’ßô   ’ß *`ë `ˇˇˇıPH	`ñ `PP
+PYÄ¯          â   ˇˇˇˇ    Ç          ÿ   f.ˆ⁄ÿ   é                      „–   ‰ƒ   ∏   M¡   y  ‰¡   ø  O   ‰¡   ø O   ‰¡   ø O   ‰¡   ø O   ‰¡   O   ‰¡   ø  L   ÊL   È¡   L   u O   ‰¡   ÊL	   Èy  ‰ßö 	`-	`-	`-	`-	`+	`ì 4	ˇˇˇ˜PI	`P$PÄÄÄl   ^_Wl   6                       „–   ‰¡   æ   Ç¡   L   Ë  É O   ‰¡   ÊL   Èy  ‰ß&	`
+%ˇˇˇÎP)	`P$PÄd   •õ†d   /                        „–   ‰¡   L   ÊL   È¡   L   ;   >   y ‰ß&	`ê 	ˇˇˇÊP$PÄH   kD˘|H                           „–   ‰¡   L   ÊL   Èy  ‰ß&	`ê P$PÄÄ@   ı⁄õá@                           „—   ‰ƒ   o   >   ‰ßg@êPÄÙ  òÜ§  =                     $≥¥   ‰ø  ÊMÈw  fÊL   Èö   ≥¥   ‰Áu  f ÊL   ù  ô   L   Æ¥   ¡   L      û   ô
+   ‰¡   L      ô   úù   ô   ≥¥  ‰¡   L
+   L   ÊL   Èƒ   L   u ¥  ‰ƒ   L   ¡  úQ   ô   ƒ   ¡  O   ‰¡  ú   ô   ƒ   ÊL   Èy  ‰õ   ô   ƒ   ÊL   Èy  ‰ô   ’ô   õ   ô   ±Ë  d™ô   ‰õÏ˛ˇˇô   Â ’ß f† ˇˇˇÎú $`∏ F&)`ï #
+ˇˇˇ˜P(`
+/`/`.`P `P¶@OPÙ  ƒ         <  ˇˇˇˇ	   ~   ì              %            B   Ÿ              t  ˝1Äxd  Ú                      „—   ‰7–   ‰”   ≥¥  ‰…àÇ¡   Ö  ƒ  â‰∂  ‰ƒ  πƒ  πÊL   È;      >   u O   ‰æ   L   L	   
+   (æ   L   (   (¥  ‰¡  ƒ  πÊL   È   u (∂   ‰æ   L   L   ÊL   È   u M∂   ‰æ    ƒ   u ÊL   Èo   y ‰‘ƒ   ®¶ß+`ˇˇˇ˙Pê@	`ì 
+ˇˇˇÚP)`ï "ñ `	í P*`õ PK	`ˇˇˇˇP
+ˇˇˇ˚PE6WÄÄÄt        ÿ   ˇˇˇˇ  )	øè‰  f                      9¿  —   ‰ä—   ‰Æ”   ƒ  L   » ú(   ô   ƒ  πL      O   ‰ ¶‘õÓ   ô   ƒ  ÊL   Èu  îïù   ô   ƒ  êƒ  ì   å   óô   ∂   ‰æ    u  ∂   ‰ƒ   ÊL   È	   u ˇú$   ô   ƒ   ƒ  ∏  O
+   ‰õ   ô   ƒ   o   O   ‰ô   æ   Çæ   L      o   o   Ë  É ‰ƒ  πL   ÊL   Èƒ   y ‰‘ ¶ô   •ƒ   ë¶ƒ   çõ   ô   ±ƒ   í¶ƒ   çô   ßë 	%`ò `ñ `A-	L`
+PØ `O	`ë Pê `ü `ï@`&%E%ID,`í ˇˇˇÙP%	≤PÄÄÄ    Ë  {           ˇˇˇˇ    G                     <  ÿ  ¡œ»  C                &       ≥¥   ‰ƒ   ∏   L   L   ÊL   Èæ       u y ‰ƒ   L   L   ÊL   Èæ       u y ‰ƒ   L   L   ÊL   Èæ       ƒ  ∏  3(	   (u y ‰æ
+   ÊL   È   u ¥   ‰¡      O   ‰ƒ   L   L   ÊL   È¡   y ‰ƒ   L   L   L   ÊL   Èæ       u †   ô"   ‰   ô"      y ‰ƒ   L   L   ƒ   ∏   O   ‰’ß &`õ ([ˇˇˇÙP$`ñ ([ˇˇˇÙP$`ñ (í ˇˇˇÓPˇˇˇÙPD"`ë 	P(`/`ñ (ˇˇˇÙPD	`õ [òE	;PD`† Pÿ         B  ˇˇˇˇÄ   ÑßIÄ   N                  
+        ƒ   ∏   L   L   L   ÊL   È   y ‰ƒ   L   L   L   ÊL   È   y ‰ß `• &P$`† &P$PÄ   ÑßIÄ   N                  
+        ƒ   ∏   L   L   L   ÊL   È   y ‰ƒ   L   L   L   ÊL   È   y ‰ß `• &P$`† &P$Pÿ  ÍR˘»  7                     „–   ‰7–  ‰≥¥  ¥  ‰…àÇ¡  Ö  ¡   â‰¥   ‰¡   π¡   πÊL   È;      >   u O   ‰¡   πÊL   È   u ¥  ‰¡   πÊL   È	   u ¥  ‰¡   πæ
+   Ç¡  ÊL   È¡  ÊL   È   u u Ë  É O   ‰¡   πæ
+   Ç¡  ÊL   È¡  ÊL   È   u u Ë  É O   ‰¡   π¡   πÊL   È   u    O   ‰¡   πÊL   Èy  ‰’¡   ®¶ß*`ˇˇˇ˙PN	`ë 
+ˇˇˇÚPI`ë P(`ë PH	`ê 
+PˇˇˇÌPˇˇˇÌP)	`ê 
+PˇˇˇÌPˇˇˇÌPI	`ñ PO	`P%VÄÄÿ        $  ˇˇˇˇ  NÑ{ã¯  v        
+               „–   ‰≥¥  ¥  ¥  ¥  ¥  ‰æ   ÇË  É  ¥  ‰   æ   3(¥  ‰¡  ¡   L   ú   ô   ¡   L   õ   ô   ¡   L   ô	   ¥  ‰æ   ÇË  É  ¡  )¥  ‰¡   ÊL   È¡  u ¥  ‰¡   ú   ô   ¡     (0–  ‰õK   ô   ¡  ¡   L   ú   ô   	   ¡  (–  ‰õ   ô   ¡  
+   (0–  ‰ô   ¡   L   ¡  3¡  3(   (O   ‰¡   L   ú+   ô   ¡   L   ¡   ÊL   È¡  u O   ‰ô    ’ßñ `í `=,`∫@`*`ˇˇˇˆPH`ê `ö `	î `î `ï@	`	í `ì `î !ˇˇˇ˜POPÄÄÄ        o  ˇˇˇˇê  =öi´@  Õ          	             ≥¥   ¥  ‰æ   ÊL   Èæ   ÊL   Èæ   ÇË  É  ø  )Ë-u u ¥  ‰	ÄQ¥   ‰¡  ¡   ú   ô      ¶’ßô   ¡   ,–   ‰¡  ¡   ú   ô      ¶’ßô   ¡   ,–   ‰¡  ¡   ú   ô      ¶’ßô   	   ¶’ß’ß *`	ZˇˇˇÏPˇˇˇ˜PH`)`
+`EH	`,`
+`EH		`,`
+`EH	`ETÄê         Ã   ˇˇˇˇ    e              ë              Ω                         ¸  "i≠å  Æ         	       C      ≥¥   ¥  ¥  ‰æ   ÇË  É  ø  )¥  ‰æ   ÊL   Èæ   ÊL   È¡  Ë-u u ¥  ‰¡  Ä3·-¥   ‰¡    úR   ô   æ   ÊL   È¡   u    ¡   "ú   ô      õ   ô      ô   3((¶’ßô   ¡  	 ç'-–   ‰¡    úR   ô   æ   ÊL   È¡   u 	   ¡   "ú   ô      õ   ô      ô   3((¶’ßô   ¡  	ÄQ-–   ‰¡    úR   ô!   æ   ÊL   È¡   u 
+   ¡   "ú   ô&      õ   ô&      ô&   3((¶’ßô(   ¡  -–   ‰¡    úR   ô+   æ   ÊL   È¡   u    ¡   "ú   ô0      õ   ô0      ô0   3((¶’ßô2   ¡  <-–   ‰¡    úR   ô5   æ   ÊL   È¡   u    ¡   "ú   ô:      õ   ô:      ô:   3((¶’ßô<   æ   ÊL   È¡  u    ¡   "ú   ôA      õ   ôA      ôA   3((¶’ß’ß .`)`	ˇˇˇ˙Pˇˇˇ˜P(`O`ê `ˇˇˇ˙P≠@H	`N`ê `ˇˇˇ˙P	≠@H		`N`ê `ˇˇˇ˙P≠@H	`M`ê `ˇˇˇ˙P≠@H	`L`ê `ˇˇˇ˙P
+≠@H	`ˇˇˇ˙P
+≠ T¸         ≠  ˇˇˇˇ    µ                            ã             ı             ^             ´         ‹  ÷*Ç˜¨  /        
+             $„–   ‰7–  ‰≥¥  ¥  ‰…àÇ¡  Ö  ¡   â‰¥   ‰¡   π¡   πÊL   È;      >   u O   ‰æ    ¡   πÊL   È	   u u ¥  ‰¡  ú   ô   
+   õ   ô   ¡  ô   3   (¥  ‰≥¥  ‰¥  ‰ö   ¡  ¡  ú*   ô   ¡  æ   (0–  ‰¡  2*–  ‰õÃˇˇˇô   ’¡     (0–  ‰¡   πL      ¡  3(   (O   ‰’¡   ®¶ß*`ˇˇˇ˙PN	`ë 
+ˇˇˇÚPI`	ë Pˇˇˇ˙PH` µ `f/`ê@#`ñ@	`ê@	`Uì VÄ‹  Ã          ˇˇˇˇ   ´   K              ∑   9   »  M…ö∏  4        
+             „–   ‰7–  ‰≥¥  ¥  ¥  ‰…àÇ¡  Ö  ¡   â‰¥   ‰¡   π¡   πÊL   È;      >   u O   ‰æ    ¡   πÊL   È	   u u ¥  ‰æ    ¡   πÊL   È
+   u u ¥  ‰¡  ¡   ú   ô   ¡  –  ‰ô   ¡   ú   ô   ¡  ¡  -d,õ   ô   dô   ¥  ‰¡   πL      ¡  3(   (¡   πÊL   È¡  u 3(   (O   ‰’¡   ®¶ß.`ˇˇˇ˙P.	`ë 
+ˇˇˇÚPI`	ë Pˇˇˇ˙P(`	ë Pˇˇˇ˙PH`	`N	`ï û@	`O**ˇˇˇ˜Pí@V»        !  ˇˇˇˇ‰  ©Í¨«î                        $≥¥   ¥  ¥  ‰ø  dú   ô      ¶’ßô   ø  
+-0œ  ‰j   … k    6k   "k   ¥  ‰j   ⁄ k    ∆ k   k   ¥  ‰   ¥   ‰≥¥  ‰¥  ‰ö   ¡  úu   ô   ¡   æ   ÊL   È¡  ¡  M¡  ¡  M¡  ¡  M)ø  
+-,(u ÊL   Èu ÊL   È	   u (0–   ‰¡  2*–  ‰õÉˇˇˇô   ’¡   ¶’ß’ß .`ê `EH	`K`† `°@`*`fë `ê 	
+		
+ˇˇˇ‹P1Pë PJ `ñ@	`$TÄÄ‰  ‘           ˇˇˇˇ    %             Å   î                           ç   Ç   Ñ  \˚t  ´               ?      „–   ‰7–  ‰≥¥  ¥  ¥  ¥  ‰…àÇ¡  Ö  ¡   â‰¥   ‰¡   π¡   πÊL   È;      >   u O   ‰¡   πÊL   È   u ¥  ‰¡   πÊL   È	   u ¥  ‰¡   πÊL   È
+   u    ¥  ‰æ    ¡   πÊL   È   u u ¥  ‰¡     ú$   ô   ¡   πL      O   ‰õ¶  ô   ¡     ú>   ô   ¡   πL   ÊL   È   y ‰¡   πL      O   ‰õY  ô   ¡     ú◊   ô   ¡     ú<   ô    ¡   πL      ¡   πÊL   Èu 3(   (O   ‰õÇ   ô&   ¡     ú<   ô(   ¡   πL      ¡   πÊL   Èu 3(   (O   ‰õ7   ô.   ¡   πL      ¡   πÊL   Èu 3(   (O   ‰ô4   õs   ô4   ¡  ú$   ô5   ¡   πL      O   ‰õF   ô7   ¡   πL      ¡   πÊL   È¡  u 3(   (¡  3(    (O   ‰ô?   ’¡   ®¶ßí `ˇˇˇ˙P.	`ë 
+ˇˇˇÚPI`ë P(`ë P(`ë P.`	ë Pˇˇˇ˙PH
+`î `ü@`î `ñ P$`ü@`î `î `-Põ@`î `-Põ0" `-P†@)`.`ü0. `-ˇˇˇ˜Pò@2VÄÄÄÑ        ò  ˇˇˇˇ‰  ©Í¨«î                        $≥¥   ¥  ¥  ‰ø  dú   ô      ¶’ßô   ø  
+-0œ  ‰j   … k    6k   "k   ¥  ‰j   ⁄ k    ∆ k   k   ¥  ‰   ¥   ‰≥¥  ‰¥  ‰ö   ¡  úu   ô   ¡   æ   ÊL   È¡  ¡  M¡  ¡  M¡  ¡  M)ø  
+-,(u ÊL   Èu ÊL   È	   u (0–   ‰¡  2*–  ‰õÉˇˇˇô   ’¡   ¶’ß’ß .`ê `EH	`K`† `°@`*`fë `ê 	
+		
+ˇˇˇ‹P1Pë PJ `ñ@	`$TÄÄ‰  ‘           ˇˇˇˇ    %             Å   î                           ç   Ç   ò  „tµhò                        „—   ‰7–   ‰…àÇ¡   Ö  ƒ   â‰∂   ‰ƒ   πƒ   πL   ÊL   Èƒ   πu O   ‰ƒ   πƒ   πL   ÊL   Èƒ   πu O   ‰ƒ   πƒ   πL   ÊL   Èƒ   πu O   ‰ƒ   πƒ   πL   ÊL   Èƒ   πu O   ‰ƒ   πj    O   ‰ƒ   πˇO   ‰æ   ÊL	   È
+   ;      >   u ÊL   Èo   y ‰ƒ   ®¶ß-`ˇˇˇ˙Pê 	`ò 1ˇˇˇ˚P)	`ò ˇˇˇ˚P)	`ò !ˇˇˇ˚P)	`ò ;ˇˇˇ˚P)	`ë 	`N		`ë  %J	PJˇˇˇ˚PDWÄÄ–   ˛Z	“º   Ö                      %¿  —   ‰ä—   ‰Æƒ  πƒ   ÊL   Èu  îïù   ô   ƒ   êƒ   ì   å   óô   L   O   ‰ ¶•ƒ   ë¶ƒ   çõ   ô   ±ƒ   í¶ƒ   çô   ßë `í P¥ 	≠PÄ–   ¿   A              [   †  K4´ê                        „—   ‰”   ƒ  L   ÊL   È   y ‰ƒ     O   ‰ƒ  ÊL   È   u ∂   ‰ƒ  ƒ  ÊL   È	   u O	   ‰ƒ  ƒ  ÊL   È
+   u O   ‰æ   ÊL   È   o   y ‰æ   ÊL   È   ƒ  L   y ‰ƒ  L	   ÊL   È	   ƒ  L   y ‰ƒ  L	   ÊL   È   ƒ  L   y ‰‘ß%	`ñ P$	`ê@
+`ë P)	`ñ P)	`ñ PI	`ë #ˇˇˇÊPD	`ë #
+ˇˇˇ‰P$	`ñ %
+ˇˇˇÊP$	`ñ '
+ˇˇˇ‰P%PÄÄ†          ˇˇˇˇt   #Kı|t   <                         ƒ   ∏   ÊL   Èø  L   u ù   ô   ƒ  ÊL   Èy  ‰ô   ß `ë ˇˇˇ˜P-`PI	PÄX   O˙cX   %                        „–   ‰æ   ÊL   È   ¡   L   y ‰ß&	`ë &	ˇˇˇ·P$PÄÄÄÙ   pπàÙ   £                       „–   ‰ø  L      û   ô   ‰¡   ÊL   Èø  u ô   úh   ô   ø  ÊL   Èy  ‰¡   L   ÊL   È   y ‰¡   L   	   O
+   ‰¡   ÊL   Èy  ‰¡   L   ÊL   Èy  ‰ô   ß&`§ "ˇˇˇÙPí `
+P$`ï P$`î `P$`ê PIPÄp   ?.ap   ;                         æ   L   ÊL   È   u ú   ô   ø  L   §ô   ø  L   §ß `ñ P-`HF	`(QL   ∑…¢\L                            „–   ‰¡   L   ÊL   È   y ‰ß&	`ï P$PÄ‰  æΩˆœî  ‚        	       0      $„–   ‰”   ≥¥  ‰¡   L   L   ÊL   Èu  ∂   ‰ƒ      ú;   ô   ¡   j    O   ‰¡   L   ÊL   È	   	   y ‰ ¶‘ßô   ¡   L
+   ÊL   Èo   u ¥  ‰¡   L      O   ‰¡   j    O   ‰¡   ˇO   ‰¡  L    ú-   ô   ¡   L   ÊL   È	   	   y ‰õ·   ô   ¡   L   ÊL   È	   y ‰¡   L      O   ‰≥¥  ‰¥  ‰ö   ¡  ¡  L   úÑ   ô!   ≥¥  ‰æ   Ç¡  ¡  ML   ¡  ¡  ML   Ë  É ¥  ‰¡   L   ÊL   È¡  y ‰¡   L   ÊL   È¡  L   y ‰’¡  2*–  ‰õmˇˇˇô0   ’ô0   ‘ß+`ï PI`ï `/`ö P$`AH
+$`ê ˇˇˇ˘P(	`î 	`/	`L`ñ `ö P `ï P$`î `fî  &`í ˇˇˇ“(`ê ˇˇˇ˚P$`ê 	ˇˇˇÙPE<`ú@PÄ‰  ‘        ÷  ˇˇˇˇ    t             1  ™          [  j             =  ò   h   lâkh   1                         ø  L   ÊL   Èu  ÊL   Èƒ   ∏   ÊL   Èu  u § `P
+ë PˇˇˇPÄÄ   ç]9}   ≥                      „–   ‰ø  ¡   L   L   "ú   ô   œ  ‰ô   ø  ú   ô   ¡   L   L   )œ  ‰ô	   ¡   L   ˇú(   ô   ¡   L   ¡   L   MÊL   Èy  ‰ô   ¡   L   ø  MÊL   Èy  ‰¡   ø  O   ‰ß&`ô `J`/`ô@`ñ `ö PI	`î P$	`-PÄà  vH~à                 !       „–   ‰ø  L      ú   ô   ¡   ÊL   Èy  ‰õÍ   ô   ø  L      ú7   ô   ø  ÊL   Èy  ‰¡   ÊL   È¡   L   (y ‰õ†   ô   ø  L      ú7   ô   ø  ÊL   Èy  ‰¡   ÊL   È¡   L   )y ‰õV   ô   ø  L   	   ú>   ô   ¡   L   ˇú(   ô   ¡   L
+   ¡   L   MÊL   Èy  ‰ô!   ß&`ò `P.`ò `
+P$`ˇˇˇÒP.`ò `
+P$`ˇˇˇÒP.`ò `ñ `ö PIPÄÄÄ  ‰S§?   £                     „–   ‰≥¥  ¥  ‰æ   ÊL   È   u ¥  ‰æ   ÊL   È   u ¥  ‰¡  ÊL   È   ø y ‰¡  ø  O   ‰¡  ÊL	   È¡  y ‰¡   ¡  O
+   ‰¡   ø  O   ‰¡   ø O   ‰’ß*`ë 	P(`ë 	P(	`ê ˇˇˇÎP$	`-	`ˇˇˇÙP$	`.	`-	`.PÄÄ        ú   ˇˇˇˇP   å0ˆP   %                        „–   ‰¡   L   ÊL   È      y ‰ß&	`ö P$PP   Ç€S(P   %                        „–   ‰¡   L   L   ÊL   È   y ‰ß&	`ö P$PP   Ç€S(P   %                        „–   ‰¡   L   L   ÊLô$f€   È   y ‰ß&	`ö P$PÙ   ‘û¬“‰   ô                       „–   ‰≥¥  ‰æ   Çæ   L   L   Ë  É ¥  ‰¡  ÊL   È   u  ú6   ô   ¡   ÊL   	   ¡  ÊL   È   u 3((0O   ‰ô   æ   L   ¡   L   O   ‰’ß&`ì ˇˇˇÏ(`ê Pê `ê Pí 	`ö PÙ         í   ˇˇˇˇ¥   ÃZY¥¥   p                	       „–   ‰7–  ‰…àÇ¡  Ö  ¡   â‰¥   ‰¡   π¡   πÊL   È;      >   u O   ‰¡   π¡   πÊL   È   u O   ‰¡   ®¶ß,`ˇˇˇ˙PN	`ë 
+ˇˇˇÚP)	`ñ P)VÄ$  ˇªz!  ¬         	              „–   ‰≥¥  ¥  ¥  ¥  ‰æ   L   ÇË  É  ¥  ‰¡   L   ÊL   È      u ¥  ‰¡  ÊL   È¡  u ¥  ‰¡  ÊL   È	   
+   u ÊL   È      u ÊL   È      u ¥  ‰¡   L   ¡  O   ‰’ßí `ó #`ö P(`ˇˇˇ˜P( `ï P*Z*Z(	`î P$        ª   ˇˇˇˇÃ   ˜+≈πº   Ä                       ≥¥   ‰ø  L   ü>   ô   ‰æ   L      û"   ô   ‰æ   L   L   L   ô   ¥   ‰¡   ú   ô   æ   L   ÊL	   Èy  ‰ô   ’ß &`ì Ω 	`.	`ë P:PÄÃ             ˇˇˇˇ¿   k6∏¿   Å                          æ   L   Ùúm   ô   æ   ÊL   È   u L   æ   L   3   (N	   ‰æ   ÊL   È
+   u L   æ   L   L)3   (N	   ‰ô   ß 	`ò 	`ë 	P(ó 	`ë 	P(ü0PÄÄÄÃ  ^vŒú                         ”   ≥¥   ¥  ‰æ   ÊL   È   u ¥   ‰¡    ú   ô    ¶‘ßô   ¡   L   L      ú   ô   æ    æ	   2y ‰ ¶‘ßô   æ
+   Çæ   Çæ   L   L   Ë  É ;   o   >   Ë  É ¥  ‰¡  L    ú   ô      ¡  L   3(õ   ô      ô   ∂   ‰æ   ÊL   È   u ÊL   Èo   y ‰‘ß /`ë 	PH	`ë `18H	`û 	`ˇˇˇˇP$	`18H
+`
+ì ˇˇˇÏP-%	N
+H`õ "•@`ë 	P
+0ˇˇˇ¯P58PÄÃ          ˇˇˇˇ    <              t          @   y©>U@                            ø  ÊL   Èø u § `
+ˇˇˇ¸PÄ‹  ˜-[ó                  c      $≥¥   ¥  ¥  ¥  ¥  ‰ø  L   ÊL   È   u MÊL   È      u ¥   ‰¡   ÊL   È   u MÊL	   È
+   L   u    ¥  ‰¡   ÊL   È   u MÊL	   È   L   u    ¥  ‰¡   ÊL   È   u MÊL	   È   L   u    ¥  ‰¡  ú¡   ô   ≥¥  ‰ø  L   ÊMÈw  fÊL   Èö    ≥¥  ‰Áu  f ÊL   ùw   ô#   L   Æ¥  ¡  L      ú2   ô'   ¡  L      N   ‰¡  L      N   ‰ô+   õ   ô+   ±Ë  d™ô,   ‰õvˇˇˇô,   Â ’ô,   ¡  û   ô-   ‰¡  ô-   ú⁄   ô.   ≥¥  ‰ø  L   ÊMÈw  fÊL   Èö2   ≥¥  ‰Áu  f ÊL   ùã   ô5   L   Æ¥  ¡  L      úF   ô9   ¡  L      N   ‰¡  L      N   ‰¡  L      N   ‰ô?   õ   ô?   ±Ë  d™ô@   ‰õbˇˇˇô@   Â ’õ„   ô@   ¡  ú’   ôA   ≥¥  ‰ø  L   ÊMÈw  fÊL   ÈöE   ≥¥  ‰Áu  f ÊL   ùã   ôH   L   Æ¥  ¡  L      úF   ôL   ¡  L      N   ‰¡  L      N   ‰¡  L      N   ‰ôR   õ   ôR   ±Ë  d™ôS   ‰õbˇˇˇôS   Â ’ôS   ¡  úT   ôT       ¡   ÊL   È   u ÊL	   Èu ÊL!   È   u (ƒ   ∏   (   (õ   ô]   "   ô]   ¥  ‰ø  #   ¡  3($   (ø  L%   3(&   (N%   ‰’ß ñ@`î Pñ P(`ê 	P
+ˇˇˇ˙P.`ê 	P
+ˇˇˇ˙P. `ê 	P
+ˇˇˇ˙PN`.f• ˇˇˇÓú $`ô `î `∞@î@`¢ f• ˇˇˇÓú $`ô `î `î `∞@ô@`.f• ˇˇˇÓú $`ô `î `î `∞@î@"`.ï 	PP	PõO&	`ó PÄÄ‹  L           ˇˇˇˇ   Û   ∑          —  À          ¥  À              ì            :  O           è          Ö              c           £          h            ˚  c         ”  £     ¨†‘  A                (       ≥¥   ‰æ   ÊL   È   u ¥   ‰æ   L   L   ÊL   È   u L	   !ú   ô    ¶’ßô   ¡    ú   ô   æ
+    æ   dy ‰ ¶’ßô   ¡   ÊL   È   æ   ÊL   È¡   L   » u    (y ‰¡   L   N   ‰æ       ;   >   >   >   >   >   >   
+öôôôôô…?>   
+      ‡?>   
+>   >   >    >!   "   >#   y ‰’ß &`ë 	PH	`õ Pï `1H	`ë 	`ˇˇˇˇP$	`1H
+`ê 	ˇˇˇ¸P	ˇˇˇ‰P$`ê@`%	&&&&&&..'&&&JP5PÄÄ         @  ˇˇˇˇ    R              }          3ıÿ  `  `                 ∫  	      
+        `  `            ﬁ      `  `      Ö  =      ;      `5  ı    ≠  P  ∫  ˆ  a   ˜  
+  `®     `  `ç Ö  "  ﬂ  ~  -  /  \  	   €      ` @  i   Ù    ∫        ` ê     `     >  @     `	  `  ≠  ˛  ˇ    €   ¸  H  ÷  5  6  Ç     @.  p®   ◊  ÿ  v     ú   /  p  `  `  ≠    6  =  Ö  /      ¡    '  á  ! a ∫  " #   @$ % & ' ( ) * + , - . / 1 0   `  `@  i   Ù  ﬁ  (  ,  3     `ø  "  #    !        `	  p&    `           "  #  !  $    `%  &     '    `   '      @(    `   )  !  `"  `H  I  J    K  L  /  M      N  O  ø  P  "       Q  R  S  @  #  `H  P  "     R  T  U  $  `H  P  "     U  T  R    `   `∂  0  A  @  C     D  E  F    pG      P  R    p  pJ    `  `1    @3  2  0  5  6  7  8  9  /  ;    =  Ö  >  ¡    p&  `'  `1    @3  2  0  ;  Y  Z  &  \  D  [  [  ]  ^  €  _  (  `)  `&  b  V  [  ]  d  e  f  g  0  h  @  ^  ∫  j  i  *  `+  `'  k  l  &  n  o  p  q  ,  `-  `&  '  k  l  r  s  v   s  t  u  v  w  /  `0  `1    @3  2  0  n  ;  ¨  |  }  1  `x  ~    h  @  3  `4  `1    @3  2  0  n  ;  Å  Ç  É  Ñ  j  Ö  @  5  `6  `q  #  7  `'  à  —  â  0  9  `:  `1    @3  2  0  ;  ∂  ã  å  €  n  ç  é  è  @  ê  "     ë  í  ì  î  ï  j  ñ  ó  ò  ô  ö  õ  ú  ;  `<  `q  #  =  `'  à  —  â  0  @  `¸   ®  ?  `û  ü  †  °  ¢  £  §  5  >  •    @ß  ¶  ¡    pC  `#  ø  †  A  `B  `"     ™  ´  @  ≠  Æ  ‰   ∞  Ø    ±  ≤    p5  ≥  û  °  ¢  D  `5  µ  ≥  û  E  `∂  k  ∑  ∏  "     π  ‰   v   Ù  °  ∫  F  `ª  º  ”   Ω  æ  ø  G  `"  T  π  J  `7  ∆  ”   H  `I  `‰   Ù  ¿  v   £  Ø  ¡  ¬  ®  ƒ  !  p@  §    «  K  `L  `…  7       J  t   M  `£    §  Ã  Õ  N  `∂  Œ  †  œ  ∏  À  §  –  —  £  “  P  `Q  `    R a  ¡    ‘  J  t   ”  R  `t   ¡  ¬  S  `t   "     π  T  `t   "  T  π  U  `V  `÷  5  6  Ç  ®   ◊    ÿ  X  `1  	  @3  2  0  ;  ⁄  Y  `Z  `‹  ›  ⁄  ﬂ  ‡  
+  ·  A D B E C F 0  @  [  `\  `Ô  5      Ò  ﬁ  6  Ú     `  p  p  p,  p-  p0  p  `  `  p  pz  A     p$    p'    p)      `/  
+  p.  V  W  %  `  p  p_    pj    pd  X  x  y  .  `  pz  2  `  p  pÄ  8  `  p  pä  >  `  p  p©    p¥    pû    p∑    p†     p°  "  pÀ  #  p¢  ù  O  `$  p%  p&  pÕ  '  pÃ  (  p“  …  W  `)  p*  pŸ  5  „  ‰  Â  Ê  Á  Ë  È  Í  Î  ±  Ï  +  pÛ  Ù  ¯  ˘  
+  @ ¸   ˇXÑe  f                                 
+                         ´   
+         # µ      $      "  ∫      '      "  ¿      )      "  ®              "  ó      &      !
+ ˛      .      # Í      2     ! √      3     ! ⁄      4     ! ‚      4     !      X      # %     _      "  7  
+   j      "  A     d      "  O     z      # a     Ä      # q  
+   j      "  {  !   ä      # ú  
+   j      "  ©     ù      # ¶     5     ! Ω     ©      "  π     6     ! “     ¥      "  ◊     û      "  ‰     ∑      "  Î     †      "  Û     °      "  Ô     7     !      À      "       ¢      "       …      # *     †      "  .     Õ      "  3     Ã      "  8  
+   “      "  B     Ÿ      # J     ©      "  [  
+             &      Ù        Z      ¸        1      ®       !
+ 3   '   9     ! s   $          ùH©¿      ˛o      ˛o                                             4  —    —                 Â  ä  ”  ä               " ∞  9  å  √               C  ®  ?  ®  )   	            µ    Æ    .                 ?    ?  2              í E  ¡  E  ¡  6                X  ¡  X  ¡  6             ä ˛    ≈    H              EÄ ?	    9	    P   $            ˆ
+  È  ˆ
+  È  \   !             ^  	  ^  	  q                  ∆    ∆  u              
+   »  ”  +  á               ‘  Z  Œ  Z  ó                h  –  `  –  ≠               ﬂ  (  ÷  (  Ω             
+ -#  )%  ¯"  +%  ⁄              
+ d%  ¸'  -%  ç)  Ï                
+(  ã)  (  ã)  ˝             
+ ∆)  I  è)  ïJ                 I  ìJ  
+I  ìJ  F            ä vK  _M  ?K  ;Z  d             AÄ M  XM  ˛L  XM  o            Ç vM  ùP  eM  ùP  t               [O  ÀO  [O  ÀO  Ç  ,           ∑P  Q  £P  Q  ç              Q  R  Q  R  ë              R  ôR  R  ôR  õ             £R  ’R  üR  ’R  £  	            ‚R  œV  €R  œV  ß               T  \T  T  \T  ±  ;           „V  X  ’V  X  √             [X  9Z  GX  9Z  ’             [  +\  °Z  ›]  Ô             6\  v\  2\  v\  ˚  	            Ç\  π\  |\  π\  ˇ              «\  ]  ø\  ]                ]  €]  ]  €]               
+ ^  £^  ‡]  G`                ∫^  E`  ©^  E`                 b  b  b  b  *  .            Dc  d  3c  d  4              àd  Æl  vd  Æl  ?               ße  ’e  ße  ’e  J              kf  ©l  kf  ©l  N  >            Ál  ◊o  Ãl  ◊o  {             5°›„cÇuæ˛@~      iMF9iMF9Iã\iNî‹   W    O^partitionKey=%28https%2Cepita.fr%29,:https://intra.forge.epita.fr/assets/js/script.js strongly-framed 1 security-info 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 request-method GET request-accept-encoding gzip, deflate, br, zstd response-head HTTP/2 200 
+date: Thu, 25 Dec 2025 13:59:56 GMT
+content-type: text/javascript;charset=UTF-8
+content-length: 28670
+accept-ranges: bytes
+cache-control: public, immutable, max-age=86400
+last-modified: Thu, 20 Nov 2025 14:08:15 GMT
+vary: accept-encoding
+strict-transport-security: max-age=31536000; includeSubDomains
+X-Firefox-Spdy: h2
+ original-response-headers date: Thu, 25 Dec 2025 13:59:56 GMT
+content-type: text/javascript;charset=UTF-8
+content-length: 28670
+accept-ranges: bytes
+cache-control: public, immutable, max-age=86400
+last-modified: Thu, 20 Nov 2025 14:08:15 GMT
+vary: accept-encoding
+strict-transport-security: max-age=31536000; includeSubDomains
+X-Firefox-Spdy: h2
+ ctid 2 uncompressed-len 0 net-response-time-onstart 253 net-response-time-onstop 271 alt-data 1;28670,javascript/moz-script-bytecode-20251013184459-8l alt-data-from-child 1  î≤
